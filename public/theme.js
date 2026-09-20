@@ -1,9 +1,12 @@
 /*
- * Hell/Dunkel-Umschalter — dieselbe Mechanik wie auf rickinto.place, damit sich
- * die Seiten gleich anfühlen: gespeicherte Wahl schlägt Systemeinstellung, und
- * ohne Wahl folgt die Seite dem System. Das Attribut selbst setzt schon ein
- * Schnipsel im <head>, bevor irgendetwas gezeichnet wird; hier hängt nur noch
- * der Knopf dran.
+ * Hell/Dunkel-Umschalter — derselbe Knopf wie auf rickinto.place, aber eine
+ * andere Voreinstellung: wordlab ist dunkel, bis jemand etwas anderes wählt.
+ * Die vier Lautfarben und die Regler sind auf den dunklen Grund hin entworfen,
+ * und die Seite soll überall gleich aussehen. Die Systemvorgabe zählt deshalb
+ * nicht; hell ist eine Entscheidung, keine Erbschaft.
+ *
+ * Das Attribut setzt schon ein Schnipsel im <head>, bevor irgendetwas
+ * gezeichnet wird; hier hängt nur noch der Knopf dran.
  *
  * Der Schlüssel ist derselbe wie auf der Hauptseite. Geteilt wird er trotzdem
  * nicht: localStorage gilt je Herkunft, und eine Subdomain ist eine eigene.
@@ -13,13 +16,7 @@ import { icon, paintIcons } from './icons.js';
 const KEY = 'rickintoplace-theme';
 const root = document.documentElement;
 
-const system = () => matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-const stored = () => {
-  try {
-    const v = localStorage.getItem(KEY);
-    return v === 'light' || v === 'dark' ? v : null;
-  } catch { return null; }
-};
+const DEFAULT = 'dark';
 
 function apply(theme) {
   root.dataset.theme = theme;
@@ -52,16 +49,13 @@ function mount(host) {
     if (remember) { try { localStorage.setItem(KEY, theme); } catch { /* egal */ } }
   };
 
-  paint(root.dataset.theme === 'light' ? 'light' : 'dark');
+  paint(root.dataset.theme === 'light' ? 'light' : DEFAULT);
   button.addEventListener('click', () => set(root.dataset.theme === 'light' ? 'dark' : 'light', true));
 
-  // Ohne eigene Wahl folgt die Seite weiter dem System; ein Wechsel in einem
-  // anderen Tab zieht sofort mit.
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    if (!stored()) set(system(), false);
-  });
+  // Ein Wechsel in einem anderen Tab zieht sofort mit; gelöschte Wahl fällt
+  // auf die Voreinstellung zurück, nicht auf das System.
   addEventListener('storage', e => {
-    if (e.key === KEY) set(e.newValue === 'light' || e.newValue === 'dark' ? e.newValue : system(), false);
+    if (e.key === KEY) set(e.newValue === 'light' ? 'light' : DEFAULT, false);
   });
 
   host.replaceWith(button);

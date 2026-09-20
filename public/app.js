@@ -151,8 +151,13 @@ function swapPhrase(to) {
 writePhrase(0);
 for (const el of document.querySelectorAll('.loading-text [data-text]')) letterize(el, el.dataset.text);
 
-phrase.addEventListener('pointerenter', () => swapPhrase(1));
-phrase.addEventListener('pointerleave', () => swapPhrase(0));
+// Der Zeiger fährt über den Titel, der Finger nicht: auf Tastbildschirmen
+// meldet ein Tippen erst "pointerenter" und lässt das "pointerleave" bis zum
+// nächsten Tippen irgendwo anders aus. Der Wechsel lief so genau einmal. Auf
+// Berührung zählt deshalb nur das Tippen selbst, und das schaltet um.
+const hovers = e => e.pointerType !== 'touch';
+phrase.addEventListener('pointerenter', e => { if (hovers(e)) swapPhrase(1); });
+phrase.addEventListener('pointerleave', e => { if (hovers(e)) swapPhrase(0); });
 phrase.addEventListener('click', () => swapPhrase(phraseIndex ? 0 : 1));
 
 // Der Einlauf des Titels läuft genau einmal.

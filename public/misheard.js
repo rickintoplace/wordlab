@@ -55,8 +55,13 @@ function slideTo(k) {
 
 writeSplit(0);
 const phraseEl = $('#phrase');
-phraseEl.addEventListener('pointerenter', () => slideTo(1));
-phraseEl.addEventListener('pointerleave', () => slideTo(0));
+// Der Zeiger fährt über den Titel, der Finger nicht: auf Tastbildschirmen
+// meldet ein Tippen erst "pointerenter" und lässt das "pointerleave" bis zum
+// nächsten Tippen irgendwo anders aus. Der Wechsel lief so genau einmal. Auf
+// Berührung zählt deshalb nur das Tippen selbst, und das schaltet um.
+const hovers = e => e.pointerType !== 'touch';
+phraseEl.addEventListener('pointerenter', e => { if (hovers(e)) slideTo(1); });
+phraseEl.addEventListener('pointerleave', e => { if (hovers(e)) slideTo(0); });
 phraseEl.addEventListener('click', () => slideTo(split ? 0 : 1));
 
 document.body.classList.add('intro');

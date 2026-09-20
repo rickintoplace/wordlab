@@ -171,6 +171,11 @@ verlässlich auf Laute abbilden (`daisy` hat fünf Buchstaben für vier Laute).
   und Her kehrt dadurch mitten in der Bewegung um, statt die alte Strecke erst zu
   Ende zu spielen.
 
+  Auf Tastbildschirmen gibt es kein Überfahren: ein Tippen meldet `pointerenter`
+  und lässt das `pointerleave` bis zum nächsten Tippen irgendwo anders aus — der
+  Wechsel lief so genau einmal und danach nie wieder. Auf Berührung zählt
+  deshalb nur das Tippen selbst, und das schaltet um.
+
   Die Schreibung des zweiten Reims zieht mit (`ung` → `ongue`) — das ist kein
   ausgetauschter Text, sondern vier feste Zellen: `n` und `g` bleiben stehen,
   das `u` rollt zum `o` um (der alte Buchstabe fällt dabei aus dem Fluss, damit
@@ -498,15 +503,20 @@ Auf macOS und Windows sind brauchbare Stimmen ab Werk da.
 Kopfleiste, Fußzeile und Thema sind auf allen Seiten dieselben und liegen in
 `public/theme.js` samt `public/icons.js`:
 
-- **Hell/Dunkel** funktioniert wie auf rickinto.place: ein Schnipsel im `<head>`
-  setzt `data-theme` am `<html>`, bevor irgendetwas gezeichnet wird — sonst
-  blitzt beim Laden das falsche Thema auf. Ohne gespeicherte Wahl folgt die Seite
-  dem System, und ein Wechsel in einem anderen Tab zieht mit.
+- **Hell/Dunkel** hat denselben Knopf wie rickinto.place: ein Schnipsel im
+  `<head>` setzt `data-theme` am `<html>`, bevor irgendetwas gezeichnet wird —
+  sonst blitzt beim Laden das falsche Thema auf. Ein Wechsel in einem anderen
+  Tab zieht mit.
 
-  Im CSS steht jede Farbe nur einmal, als `light-dark(hell, dunkel)`; welche
-  Hälfte gilt, entscheidet `color-scheme`. Dadurch braucht die Wahl des Nutzers
-  keine zweite Palette, sondern nur zwei Zeilen
-  (`:root[data-theme="dark"] { color-scheme: dark }`).
+  **Die Voreinstellung ist dunkel, unabhängig vom System.** Die vier Lautfarben
+  und die Regler sind auf diesen Grund hin entworfen, und die Seite soll überall
+  gleich aussehen; hell ist eine Entscheidung, keine Erbschaft. Im CSS steht das
+  als `:root { color-scheme: dark }` — damit gilt es auch ohne JavaScript, und
+  hell nur, wenn `[data-theme="light"]` es ausdrücklich setzt.
+
+  Jede Farbe steht dabei nur einmal, als `light-dark(hell, dunkel)`; welche
+  Hälfte gilt, entscheidet `color-scheme`. Die Wahl des Nutzers braucht deshalb
+  keine zweite Palette, sondern nur eine Zeile.
 
   Der Schlüssel im `localStorage` heißt wie auf der Hauptseite, geteilt wird er
   trotzdem nicht: `localStorage` gilt je Herkunft, und eine Subdomain ist eine

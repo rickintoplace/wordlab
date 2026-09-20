@@ -12,9 +12,9 @@
     // Setzt das Thema noch vor dem ersten Bild, damit beim Laden nichts aufblitzt.
     (() => {
       try {
+        // Ohne eigene Wahl bleibt es dunkel — die Systemvorgabe zählt hier nicht.
         const saved = localStorage.getItem('rickintoplace-theme');
-        const theme = saved === 'light' || saved === 'dark' ? saved
-          : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        const theme = saved === 'light' ? 'light' : 'dark';
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
         document.querySelector('meta[name="theme-color"]')

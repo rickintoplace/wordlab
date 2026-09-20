@@ -1,10 +1,13 @@
 /*
  * Zwei Paletten, eine Stelle: light-dark() wählt je nach Farbschema den einen
- * oder den anderen Wert. Welches Schema gilt, entscheidet color-scheme — ohne
- * Wahl des Nutzers das System, mit Wahl das Attribut data-theme am <html>.
+ * oder den anderen Wert. Welches Schema gilt, entscheidet color-scheme.
+ *
+ * Grundzustand ist dunkel, auch ohne JavaScript und unabhängig davon, was das
+ * System vorgibt: die vier Lautfarben und die Regler sind auf diesen Grund hin
+ * entworfen. Hell gilt nur, wenn der Umschalter es ausdrücklich gesetzt hat.
  */
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 
   /* Die Bedienelemente teilen sich die Lautfarben — es gibt auf der Seite
      genau diese vier Töne, kein fünfter Akzent. */
