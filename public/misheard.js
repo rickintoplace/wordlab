@@ -414,7 +414,7 @@ const EXAMPLES = [
   'the sky', 'ice cream', 'four candles', 'why choose', 'a nice man',
   'ice bank mice elf', 'iced ink', 'nitrate', 'illegal', 'attacks', 'mishear it',
   'the good can decay many ways', 'gray tape', 'some others',
-  'myself', 'isle of man', 'a tribute', 'stuff he knows', 'decadent', 'an aim',
+  'myself', 'isle of man', 'stuff he knows', 'decadent', 'an aim',
 ];
 
 // Sechs zufällige Vorlagen — bei jedem Seitenaufruf andere, damit man nicht

@@ -349,7 +349,7 @@ function render(pairs) {
       const play = document.createElement('button');
       play.type = 'button';
       play.className = 'row-play';
-      play.append(icon('play', { size: '13px' }));
+      play.append(icon('play', { size: '23px' }));
       play.setAttribute('aria-label', `Hear "${text}"`);
       play.addEventListener('click', () => say(text));
       wrapper.append(play);
