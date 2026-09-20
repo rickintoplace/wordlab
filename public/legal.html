@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Imprint and privacy | wordlab</title>
+  <meta name="description" content="Legal notice and privacy information for wordlab — a static site that runs entirely in your browser.">
+  <meta name="robots" content="noindex, follow">
+  <meta name="theme-color" content="#131517">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <script>
+    // Setzt das Thema noch vor dem ersten Bild, damit beim Laden nichts aufblitzt.
+    (() => {
+      try {
+        const saved = localStorage.getItem('rickintoplace-theme');
+        const theme = saved === 'light' || saved === 'dark' ? saved
+          : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        document.querySelector('meta[name="theme-color"]')
+          .setAttribute('content', theme === 'light' ? '#f6f7f8' : '#131517');
+      } catch { /* ohne Speicher bleibt es beim Systemthema */ }
+    })();
+  </script>
+</head>
+
+<body data-page="legal">
+  <nav class="site-nav">
+    <a class="brand" href="/"><span data-icon="flask-conical"></span><span class="brand-name">wordlab</span></a>
+    <div class="tabs">
+      <a href="/">Spoonerize</a>
+      <a href="/misheard">Misheard</a>
+    </div>
+    <span data-theme-switch></span>
+  </nav>
+
+  <main class="legal">
+    <header class="title">
+      <h1>Imprint &amp; privacy</h1>
+      <p class="tagline">
+        wordlab is a static site. It has no accounts, no cookies and no analytics,
+        and the words you type never leave your browser.
+      </p>
+    </header>
+
+    <nav class="legal-jump" aria-label="On this page">
+      <a href="#imprint"><span data-icon="file-text" data-icon-size="13px"></span>Imprint</a>
+      <a href="#privacy"><span data-icon="shield" data-icon-size="13px"></span>Privacy</a>
+    </nav>
+
+    <section id="imprint">
+      <p class="eyebrow">Legal notice under German law</p>
+      <h2>Imprint</h2>
+
+      <h3>Information according to Section 5 DDG</h3>
+      <address>
+        Eirik Heilmann<br>
+        Neustädter Ring 4<br>
+        37154 Northeim<br>
+        Deutschland
+      </address>
+
+      <h3>Contact</h3>
+      <p>Email: <a href="mailto:rickintoplace@proton.me">rickintoplace@proton.me</a></p>
+
+      <h3>Responsible for content according to Section 18(2) MStV</h3>
+      <address>
+        Eirik Heilmann<br>
+        Neustädter Ring 4<br>
+        37154 Northeim<br>
+        Deutschland
+      </address>
+
+      <h3>Liability for content</h3>
+      <p>
+        As a service provider, I am responsible for my own content on this site in
+        accordance with the general laws. However, I am not obliged to monitor
+        transmitted or stored third-party information, or to investigate
+        circumstances that indicate unlawful activity.
+      </p>
+
+      <h3>Liability for links</h3>
+      <p>
+        This site links to external websites. I have no influence over their content
+        and therefore cannot assume liability for it. The respective provider or
+        operator of a linked page is always responsible for its content.
+      </p>
+
+      <h3>Copyright and third-party material</h3>
+      <p>
+        The site itself is subject to German copyright law. The data it uses belongs
+        to other people and keeps its own terms: pronunciations come from the
+        <a href="https://github.com/cmusphinx/cmudict">CMU Pronouncing Dictionary</a>
+        (BSD-style licence), word frequencies from
+        <a href="https://github.com/hermitdave/FrequencyWords">hermitdave/FrequencyWords</a>
+        (MIT) built on OpenSubtitles, the spell-check word list from
+        <a href="https://github.com/wooorm/dictionaries">Hunspell en</a>, and the list of
+        rude words from <a href="https://github.com/hypernewbie/vbw">hypernewbie/vbw</a>.
+        The icons are <a href="https://lucide.dev">Lucide</a> (ISC licence).
+      </p>
+
+      <h3>Note on this translation</h3>
+      <p>
+        This English version is provided for readability. Where legally required,
+        German legal terminology and German statutory references shall be
+        interpreted according to German law.
+      </p>
+    </section>
+
+    <section id="privacy">
+      <p class="eyebrow">Data protection information</p>
+      <h2>Privacy</h2>
+
+      <h3>Overview</h3>
+      <p>
+        wordlab is a static site with no back end. The dictionaries are downloaded
+        to your browser once and every search runs on your own device — what you
+        type is never sent anywhere. There are no cookies, no tracking, no
+        analytics, no accounts and no contact forms.
+      </p>
+
+      <h3>Controller</h3>
+      <address>
+        Eirik Heilmann<br>
+        Neustädter Ring 4<br>
+        37154 Northeim<br>
+        Deutschland<br>
+        <a href="mailto:rickintoplace@proton.me">rickintoplace@proton.me</a>
+      </address>
+
+      <h3>Hosting</h3>
+      <p>
+        This site is hosted by Vercel Inc., 440 N Barranca Ave #4133, Covina,
+        CA 91723, USA. When you open the site, the hosting provider may process
+        technically necessary access data in order to deliver it and to keep it
+        secure, stable and fast: IP address, date and time of access, the requested
+        file, the amount of data transferred, referrer URL, browser type, operating
+        system and HTTP status code. This data may be stored in server log files.
+      </p>
+      <p>
+        The legal basis is Art. 6(1)(f) GDPR; the legitimate interest is the secure
+        and reliable provision of this site. Since Vercel Inc. is based in the United
+        States, data may be transferred to a third country. Where applicable, such
+        transfers rest on appropriate safeguards such as the EU Standard Contractual
+        Clauses.
+      </p>
+
+      <h3>Domain and DNS</h3>
+      <p>
+        The domain is registered through Porkbun LLC; DNS is operated by Cloudflare,
+        Inc. DNS resolution is technically required for your browser to reach this
+        site under its domain name.
+      </p>
+
+      <h3>Local storage</h3>
+      <p>
+        The site stores one thing in your browser's local storage: whether you chose
+        the light or the dark theme. It stays on your device, is not a cookie, is not
+        transmitted, and you can delete it at any time by clearing site data.
+      </p>
+
+      <h3>Reading results aloud</h3>
+      <p>
+        The “hear it” buttons use your browser's built-in speech synthesis
+        (the Web Speech API). Which voice does the speaking is the browser's
+        decision: most voices run locally on your device, but some browsers —
+        Chrome's Google voices, for example — synthesise speech on the vendor's
+        servers. In that case the phrase you asked to hear is sent to the browser
+        vendor by the browser itself, under that vendor's own privacy policy.
+        Nothing is spoken unless you press a play button.
+      </p>
+
+      <h3>External links</h3>
+      <p>
+        This site links to external pages, including GitHub and
+        <a href="https://rickinto.place">rickinto.place</a>. If you follow such a link
+        you leave this site, and the provider of the target page is responsible for
+        any data processing there.
+      </p>
+
+      <h3>Your rights under the GDPR</h3>
+      <p>
+        Subject to the conditions of the GDPR, you have the right to request access to
+        your personal data, rectification, erasure, restriction of processing and data
+        portability, and to object to certain processing. You also have the right to
+        lodge a complaint with a competent data protection supervisory authority.
+      </p>
+
+      <h3>Questions</h3>
+      <p>
+        For anything concerning privacy, write to
+        <a href="mailto:rickintoplace@proton.me">rickintoplace@proton.me</a>.
+      </p>
+
+      <p class="updated">Last updated: 20 September 2026</p>
+    </section>
+  </main>
+
+  <footer class="site-foot">
+    <a href="/"><span data-icon="arrow-left" data-icon-size="12px"></span>Back to wordlab</a>
+    <a href="https://rickinto.place">rickinto.place<span data-icon="external-link" data-icon-size="12px"></span></a>
+  </footer>
+
+  <script type="module" src="theme.js"></script>
+</body>
+</html>

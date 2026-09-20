@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spoonerize — phonetic spoonerisms | wordlab</title>
+  <meta name="description" content="Swaps the sounds at the start of two English words — and only keeps the swaps that are real words too.">
+  <meta name="theme-color" content="#131517">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <script>
+    // Setzt das Thema noch vor dem ersten Bild, damit beim Laden nichts aufblitzt.
+    (() => {
+      try {
+        const saved = localStorage.getItem('rickintoplace-theme');
+        const theme = saved === 'light' || saved === 'dark' ? saved
+          : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        document.querySelector('meta[name="theme-color"]')
+          .setAttribute('content', theme === 'light' ? '#f6f7f8' : '#131517');
+      } catch { /* ohne Speicher bleibt es beim Systemthema */ }
+    })();
+  </script>
+</head>
+
+<body>
+  <nav class="site-nav">
+    <a class="brand" href="/"><span data-icon="flask-conical"></span><span class="brand-name">wordlab</span></a>
+    <div class="tabs">
+      <a href="/" aria-current="page">Spoonerize</a>
+      <a href="/misheard">Misheard</a>
+    </div>
+    <span data-theme-switch></span>
+  </nav>
+
+  <main>
+    <header class="title">
+      <h1 id="phrase">
+        <span class="word" data-word="1"></span>
+        <span class="word plain">of the</span>
+        <span class="word" data-word="2"></span>
+      </h1>
+      <p class="tagline">Swap the sounds at the front of two words. Keep only the swaps that are words too.</p>
+    </header>
+
+    <button id="generate" class="pill-button" disabled>Spoonerize!</button>
+
+    <div id="result" aria-live="polite">
+      <div class="loading-indicator">
+        <div class="pulse-container">
+          <div class="pulse-bubble"></div>
+          <div class="pulse-bubble"></div>
+          <div class="pulse-bubble"></div>
+        </div>
+        <div class="loading-text">
+          <span class="word" data-text="reading"></span>
+          <span class="word" data-text="dictionaries"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions" hidden>
+      <button id="hear" type="button" hidden><span data-icon="volume-2" data-icon-size="14px"></span>Hear it</button>
+      <button id="copy" type="button">Copy</button>
+      <button id="sentence" type="button">Make a sentence of it</button>
+    </div>
+
+    <section class="options">
+      <div class="cards">
+        <div id="vocabulary"></div>
+        <div id="rudeness"></div>
+      </div>
+
+      <div class="basic">
+        <label class="field">
+          <span class="field-label">Start from a word</span>
+          <input id="seed" type="text" placeholder="e.g. Rick" autocomplete="off" spellcheck="false">
+          <small id="seed-hint">Leave empty for a random one.</small>
+        </label>
+
+        <div class="field">
+          <span class="field-label">Syllables</span>
+          <div class="plain-range"><input id="syllables" type="range" min="1" max="5" step="1" value="3"></div>
+          <small id="syllables-value"></small>
+        </div>
+      </div>
+
+      <button type="button" id="more-button" aria-expanded="false" aria-controls="more">
+        <span class="chevron"></span>Show more
+      </button>
+
+      <div id="more" class="advanced">
+        <div class="field">
+          <span class="field-label">Length of the first pair</span>
+          <div class="range" data-target="pair1"></div>
+          <small id="pair1-value"></small>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Length of the second pair</span>
+          <div class="range" data-target="pair2"></div>
+          <small id="pair2-value"></small>
+        </div>
+
+        <div class="field checks">
+          <label><input type="checkbox" id="vowel-onset" checked> Allow words starting with a vowel <small>(icicle / bicycle)</small></label>
+          <label><input type="checkbox" id="variants"> Allow secondary pronunciations <small>(read as /rɛd/)</small></label>
+        </div>
+      </div>
+    </section>
+
+    <footer class="credits">
+      Pronunciations from the <a href="https://github.com/cmusphinx/cmudict">CMU Pronouncing Dictionary</a>,
+      word frequencies from <a href="https://github.com/hermitdave/FrequencyWords">OpenSubtitles</a>,
+      proper names filtered out with <a href="https://github.com/wooorm/dictionaries">Hunspell en</a>,
+      rude words from <a href="https://github.com/hypernewbie/vbw">hypernewbie/vbw</a> (slurs removed).
+    </footer>
+  </main>
+
+  <footer class="site-foot">
+    <a href="/legal">Privacy &amp; imprint</a>
+    <a href="https://rickinto.place">rickinto.place<span data-icon="external-link" data-icon-size="12px"></span></a>
+  </footer>
+
+  <script type="module" src="theme.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

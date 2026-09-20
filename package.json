@@ -1,0 +1,20 @@
+{
+  "name": "spoonerisms",
+  "version": "1.0.0",
+  "description": "Phonetische Wortspiel-Werkzeuge (Englisch): Spoonerismen und Oronyme",
+  "scripts": {
+    "dev": "node tools/serve.mjs",
+    "data": "node build/build-data.mjs",
+    "check": "node tools/check.mjs",
+    "try": "node tools/try.mjs",
+    "try:misheard": "node tools/try-oronyms.mjs",
+    "tune": "node tools/tune-oronyms.mjs"
+  },
+  "keywords": [],
+  "type": "module",
+  "dependencies": {
+    "dictionary-en": "^4.0.0",
+    "nspell": "^2.1.5"
+  },
+  "private": true
+}
