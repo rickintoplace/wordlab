@@ -20,6 +20,9 @@ const PATHS = {
     'M16 9a5 5 0 0 1 0 6',
     'M19.364 18.364a9 9 0 0 0 0-12.728',
   ],
+  copy: ['M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'],
+  'arrow-up': ['m5 12 7-7 7 7', 'M12 19V5'],
+  check: ['M20 6 9 17l-5-5'],
   'external-link': ['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'],
   'arrow-left': ['m12 19-7-7 7-7', 'M19 12H5'],
   'file-text': [
@@ -34,6 +37,12 @@ const PATHS = {
     'M22 16a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2z',
     'M6 10h.01', 'M6 18h.01',
   ],
+};
+
+/* Was sich nicht als Pfad schreiben lässt. */
+const SHAPES = {
+  sun: [['circle', { cx: 12, cy: 12, r: 4 }]],
+  copy: [['rect', { width: 14, height: 14, x: 8, y: 8, rx: 2, ry: 2 }]],
 };
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -51,10 +60,10 @@ export function icon(name, { size = '1em', stroke = 1.75 } = {}) {
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
   svg.classList.add('icon');
-  if (name === 'sun') {
-    const c = document.createElementNS(NS, 'circle');
-    c.setAttribute('cx', '12'); c.setAttribute('cy', '12'); c.setAttribute('r', '4');
-    svg.append(c);
+  for (const [tag, attrs] of SHAPES[name] ?? []) {
+    const shape = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) shape.setAttribute(k, String(v));
+    svg.append(shape);
   }
   for (const d of PATHS[name] ?? []) {
     const path = document.createElementNS(NS, 'path');

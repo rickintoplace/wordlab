@@ -176,6 +176,27 @@ export function contextFactor(prevCh, nextCh, from, to, atEnd) {
   return 1;
 }
 
+/** Stimmhafte Geräuschlaute — für die Clusterregel darunter. */
+const VOICED = new Set(['B', 'D', 'G', 'V', 'DH', 'Z', 'ZH', 'JH'].map(n => encodeMap.get(n)));
+
+/** Was ein gemeinsam gekippter Cluster von der Summe seiner Einzelkosten kostet. */
+export const CLUSTER_VOICING = 0.5;
+
+/**
+ * Stimmhaftigkeit gilt im Englischen für den ganzen Geräuschlautcluster und
+ * nicht für den einzelnen Laut: /zd/ und /st/ trennt ein Merkmal, nicht zwei.
+ * Ein Nachbarpaar, das gemeinsam umschlägt, ist deshalb ein Hörfehler und nicht
+ * zwei — daran hängt "used ink" / "you stink". Liegt so ein Paar vor, liefert
+ * die Funktion die beiden Ersatzlaute; sonst null.
+ */
+export function clusterTwins(a, b) {
+  const x = VOICE_TWIN.get(a), y = VOICE_TWIN.get(b);
+  if (x === undefined || y === undefined) return null;
+  // Nur ein Cluster, der schon einheitlich war, kippt als Ganzes.
+  if (VOICED.has(a) !== VOICED.has(b)) return null;
+  return [x, y];
+}
+
 /**
  * Affrikaten sind bei uns ein Laut, ihre Bestandteile zwei — dadurch haben
  * "why choose" (w aɪ tʃ u z) und "white shoes" (w aɪ t ʃ u z) verschiedene

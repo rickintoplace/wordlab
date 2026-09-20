@@ -34,6 +34,7 @@ const TARGETS = [
   ['example', 'egg sample'],
   ['nitrate', 'night rate'],
   ['iced ink', 'i stink'],
+  ['used ink', 'you stink'],
   ['mint spy', 'mince pie'],
   ['attacks', 'a tax'],
   ['decadent', 'deck a dent'],

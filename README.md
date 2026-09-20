@@ -272,8 +272,11 @@ Drei Grenzen bleiben:
   weggefallene /t/ kostet nach der Clusterregel nur noch 0,48, aber *mince*
   steht auf Rang 18.608, und so weit hinten reicht auch der Sockel nicht mehr.
 
-Laufzeit: eine Millisekunde für eine kurze Phrase, 25 ms für neun Wörter bei
-voller Toleranz. Der Suchraum ist klein, weil pro Startposition nur Teilstrings
+Laufzeit (gemessen, nicht geschätzt): 2 ms für eine kurze Phrase, 64 ms für
+neun Wörter bei der Voreinstellung, 350 ms für neun Wörter bei voller Toleranz —
+der Strahl wird mit der Kettenlänge breiter, und das kostet am oberen Ende.
+
+Der Suchraum selbst ist klein, weil pro Startposition nur Teilstrings
 bis zur Länge des längsten Wortes geprüft werden — bei 40 Lauten sind das rund
 640 Nachschläge.
 
@@ -314,6 +317,16 @@ Vier Regeln hängen an der Umgebung, nicht am Laut allein, und jede entscheidet
 - **Stimmhaftigkeit im Geräuschlautcluster**: neben einem anderen Obstruenten
   gleicht sich ein Laut an, und der Unterschied wird unhörbar. *example* und
   *egg sample* trennt genau das /z/ neben dem /ɡ/.
+- **Stimmhaftigkeit gilt dem ganzen Cluster.** /zd/ und /st/ trennt *ein*
+  Merkmal, nicht zwei — englische Geräuschlautcluster sind einheitlich stimmhaft
+  oder stimmlos, und gehört wird das Merkmal für den Cluster. Ein Nachbarpaar,
+  das gemeinsam umschlägt, kostet deshalb die Hälfte der Einzelkosten und ist
+  auch dort erlaubt, wo sonst nur ein Laut verrutschen darf. Ohne diese Regel
+  war *used ink* → *you stink* zwei getrennte Hörfehler, blieb damit der
+  obersten Stufe vorbehalten und stand hinter *use dunk* — obwohl eine
+  Vokalverschiebung (ɪ→ʌ) viel deutlicher zu hören ist als ein mitgekippter
+  Cluster. Mit ihr steht es ab „Faint" auf Platz 1, und die Messlatte bleibt
+  bei 158.
 - **Clustervereinfachung**: ein Verschlusslaut zwischen zwei Konsonanten fällt
   im Englischen routinemäßig weg — *mints* und *mince* klingen gleich. Ohne die
   Regel kostet das Weglassen so viel wie ein beliebiger Lautverlust.
@@ -382,6 +395,13 @@ gekennzeichnet und auf drei begrenzt, sonst fluten sie die Liste. Lesarten, in
 denen kein einziges neues Wort vorkommt, fallen ganz weg. Rechts steht in fester
 Spaltenbreite, wie viele Laute verrutscht sind — feste Breite, damit beim
 Überfahren nichts springt.
+
+Jede Zeile trägt drei Knöpfe, sichtbar, sobald sie gemeint ist: anhören,
+kopieren, und **noch einmal verhören** — der Pfeil setzt die Lesart ins
+Eingabefeld und sucht von dort weiter. Damit lässt sich eine Kette laufen
+(*used ink* → *you stink* → *use sink* → …), und man kommt über *you stink*
+auch wieder bei *used ink* heraus. Klicks auf die Knöpfe bleiben bei ihnen: die
+Zeile selbst reagiert sonst mit Auswählen und Vorlesen.
 
 Zwei Lexika: die Eingabe darf alles sein, was im Aussprachewörterbuch steht
 (Namen und seltene Wörter inklusive, `data/lexicon-extra.txt`, wird erst bei

@@ -217,10 +217,10 @@ const rudeness = faceSlider($('#rudeness'), {
   title: 'Rude words',
   labels: ['Clean', 'Normal', 'Spicy', 'Filthy'],
   statuses: [
-    'rude words are left out',
-    'no filter — whatever comes up',
-    'at least one rude word in the four',
-    'a rude word in each pair',
+    'Safe for work. No rude words',
+    'no filter. Whatever comes up',
+    'I do the swear words all the time',
+    'How to: Mandatory HR meeting',
   ],
   value: 0,
 });

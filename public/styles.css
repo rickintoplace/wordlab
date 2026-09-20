@@ -247,6 +247,7 @@ body.intro .title .letter {
 }
 
 .word-wrapper {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: clamp(1rem, 6vw, 3.5rem);
@@ -1117,14 +1118,16 @@ body[data-page="misheard"] .cards { grid-template-columns: repeat(auto-fit, minm
 .voice-picker select:focus-visible { outline: 2px solid var(--c-rime-1); outline-offset: 2px; }
 
 /* Abspielknopf an einer Ergebniszeile der Spoonerize-Seite */
+/* Der Knopf steht in der Lücke zwischen den beiden Wörtern, eine Spur unter
+   ihrer Mitte — er gehört zum Paar und nicht unter die Zeile. */
 .row-play {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  grid-column: 1 / -1;
-  justify-self: center;
-  /* margin-top: .1rem; */
-  margin-top: -14em;
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  transform: translate(-50%, -50%);
   background: none;
   border: none;
   color: var(--muted);
@@ -1189,7 +1192,19 @@ body[data-page="misheard"] .cards { grid-template-columns: repeat(auto-fit, minm
   white-space: nowrap;
 }
 
-.reading .play {
+/* Anhören, kopieren, noch einmal verhören — erst sichtbar, wenn die Zeile
+   gemeint ist, damit die Liste im Ruhezustand ruhig bleibt. */
+.reading-actions {
+  display: flex;
+  align-self: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity .2s;
+}
+.reading:hover .reading-actions, .reading.picked .reading-actions { opacity: 1; }
+.reading-actions:focus-within { opacity: 1; }
+
+.reading-actions .act {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1197,14 +1212,12 @@ body[data-page="misheard"] .cards { grid-template-columns: repeat(auto-fit, minm
   border: none;
   color: var(--muted);
   cursor: pointer;
-  font-size: .85rem;
-  padding: 2px 6px;
+  padding: 5px 6px;
   border-radius: 6px;
-  opacity: 0;
-  transition: opacity .2s, color .2s;
+  transition: color .2s, background-color .2s;
 }
-.reading:hover .play, .reading.picked .play { opacity: 1; }
-.reading .play:hover { color: var(--c-rime-1); }
+.reading-actions .act:hover { color: var(--c-rime-1); background: var(--track-bg); }
+.reading-actions .act.done { color: var(--c-rime-1); }
 
 .message.error { color: var(--c-rime-2); }
 

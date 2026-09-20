@@ -9,7 +9,8 @@
 // die Kosten dafür kommen aus confusion.js.
 
 import { looseCode, expand, toIPA, isStressed } from './phonemes.js';
-import { NEIGHBOURS, ELIDABLE, contextFactor, elisionFactor } from './confusion.js';
+import { NEIGHBOURS, ELIDABLE, contextFactor, elisionFactor,
+  clusterTwins, CLUSTER_VOICING, cost } from './confusion.js';
 
 
 const MAX_WORD = 16;      // längste betrachtete Lautfolge eines Wortes
@@ -134,6 +135,21 @@ function candidates(phones, i, j, lex, tol, ok) {
       if (drop <= tol.maxStep) add(t.slice(0, p) + t.slice(p + 1), drop, i + p);
     }
   }
+  // Ein Geräuschlautcluster kippt in der Stimmhaftigkeit als Ganzes: /zd/ als
+  // /st/ zu hören ist ein Hörfehler und nicht zwei. Das Paar wird deshalb
+  // zusammen bepreist und gilt überall dort, wo auch ein einzelner Laut
+  // verrutschen darf — sonst bliebe "used ink" / "you stink" der obersten
+  // Stufe vorbehalten, obwohl es näher liegt als jede Vokalverschiebung.
+  for (let p = 0; p + 1 < t.length; p++) {
+    const twins = clusterTwins(t[p], t[p + 1]);
+    if (!twins) continue;
+    const [x, y] = twins;
+    const single = (q, from, to) =>
+      cost(from, to) * contextFactor(phones[i + q - 1], phones[i + q + 1], from, to, q === t.length - 1);
+    const c = (single(p, t[p], x) + single(p + 1, t[p + 1], y)) * CLUSTER_VOICING;
+    if (c <= tol.maxStep) add(t.slice(0, p) + x + y + t.slice(p + 2), c, i + p);
+  }
+
   // ein Laut zuviel gehört
   for (let p = 0; p <= t.length; p++) {
     for (const [ch, c] of ELIDABLE) {

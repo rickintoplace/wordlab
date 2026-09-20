@@ -71,7 +71,7 @@ const tolerance = noiseSlider($('#tolerance'), {
   labels: ['Exact', 'Faint', 'Noisy', 'Loud'],
   statuses: [
     'the very same sounds, nothing swapped',
-    'a hair of slack — schwas and soft edges',
+    'normal distractions',
     'as if across a room',
     'as if at a party',
   ],
@@ -386,14 +386,40 @@ function renderReadings(hits) {
     if (n) meta.push(`${n} sound${n > 1 ? 's' : ''} off`);
     li.append(el('span', 'reading-meta', meta.join(' · ')));
 
-    if (speech) {
-      const play = el('button', 'play');
-      play.append(icon('play', { size: '12px' }));
-      play.type = 'button';
-      play.title = 'Hear this reading';
-      play.setAttribute('aria-label', `Hear "${h.text}"`);
-      li.append(play);
-    }
+    // Die Knöpfe sitzen in der Zeile, aber nicht in ihrer Wirkung: ein Klick
+    // darauf soll nicht zusätzlich das aus, was ein Klick auf die Zeile tut.
+    const acts = el('div', 'reading-actions');
+    const act = (name, label, run) => {
+      const b = el('button', 'act');
+      b.type = 'button';
+      b.append(icon(name, { size: '13px' }));
+      b.title = label;
+      b.setAttribute('aria-label', label);
+      b.addEventListener('click', e => { e.stopPropagation(); run(b); });
+      acts.append(b);
+      return b;
+    };
+
+    if (speech) act('play', `Hear "${h.text}"`, () => say(h.text));
+
+    act('copy', `Copy "${h.text}"`, async b => {
+      try { await navigator.clipboard.writeText(h.text); } catch { return; }
+      // Kurz ein Haken statt der Blätter — die einzige Rückmeldung, die es gibt.
+      b.replaceChildren(icon('check', { size: '13px' }));
+      b.classList.add('done');
+      setTimeout(() => {
+        b.replaceChildren(icon('copy', { size: '13px' }));
+        b.classList.remove('done');
+      }, 1100);
+    });
+
+    act('arrow-up', `Mishear "${h.text}"`, () => {
+      stopSpeaking();
+      $('#input').value = h.text;
+      run();
+    });
+
+    li.append(acts);
 
     li.addEventListener('pointerenter', () => showReading(h));
     li.addEventListener('click', () => {
@@ -412,7 +438,7 @@ function renderReadings(hits) {
 // eingestellt ist (tools/tune-oronyms.mjs).
 const EXAMPLES = [
   'the sky', 'ice cream', 'four candles', 'why choose', 'a nice man',
-  'ice bank mice elf', 'iced ink', 'nitrate', 'illegal', 'attacks', 'mishear it',
+  'ice bank mice elf', 'iced ink', 'used ink', 'nitrate', 'illegal', 'attacks', 'mishear it',
   'the good can decay many ways', 'gray tape', 'some others',
   'myself', 'isle of man', 'stuff he knows', 'decadent', 'an aim',
 ];
