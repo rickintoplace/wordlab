@@ -199,7 +199,11 @@ body.intro .title .letter {
 }
 
 /* Zeiger darüber: der Ring wird breiter, der Knopf kommt einen Hauch entgegen. */
-.pill-button:hover:not([disabled]) { --ring: 2.5px; transform: scale(1.025); }
+.pill-button:hover:not([disabled]) { 
+  --ring: 2.5px;
+  transform: scale(1.025);
+  --spin: 1.2s;
+}
 
 /* Gedrückt: kurz und hart nach innen. */
 .pill-button:active:not([disabled]) {

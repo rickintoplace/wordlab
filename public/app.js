@@ -435,7 +435,7 @@ voicesReady().then(ok => {
   const hear = $('#hear');
   hear.hidden = false;
   hear.addEventListener('click', () => sayAll(lines()));
-  mountVoiceControls($('.actions'), () => (last ? lines()[0] : null));
+  mountVoiceControls($('.playback'), () => (last ? lines()[0] : null));
   if (last) render(last);              // Zeilenknöpfe nachrüsten
 });
 
@@ -450,7 +450,7 @@ $('#copy').addEventListener('click', async e => {
 
 $('#sentence').addEventListener('click', () => {
   const [a, b] = lines();
-  const q = `Write one short, funny saying that uses both "${a}" and "${b}".`;
+  const q = `Write one short, funny saying that uses these four words: ${a} ${b}.`;
   window.open('https://chat.openai.com/?q=' + encodeURIComponent(q), '_blank', 'noopener');
 });
 

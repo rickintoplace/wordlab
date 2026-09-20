@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Phonetic Spoonerisms | wordlab</title>
-  <meta name="description" content="Swaps the sounds at the start of two English words — and only keeps the swaps that are real words too.">
+  <meta name="description" content="Swaps the sounds at the start of two English words and finds spoonerisms.">
   <meta name="theme-color" content="#131517">
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -65,6 +65,10 @@
       <button id="copy" type="button">Copy</button>
       <button id="sentence" type="button">Make a sentence of it</button>
     </div>
+
+    <!-- Eigener Platz für die Stimmenauswahl: mountVoiceControls leert seinen
+         Wirt, und das wären sonst die Knöpfe darüber. -->
+    <div class="playback"></div>
 
     <section class="options">
       <div class="cards">

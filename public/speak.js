@@ -158,7 +158,7 @@ export async function sayAll(texts, { gap = 420, ...opts } = {}) {
  * @param {() => string} sample liefert den Text zum Vorhören
  */
 export function mountVoiceControls(host, sample) {
-  host.replaceChildren();
+  host.replaceChildren();          // Achtung: der Wirt gehört allein der Auswahl
   const picker = buildPicker(() => { const text = sample?.(); if (text) say(text); });
   if (picker) host.append(picker);
 
