@@ -3,17 +3,18 @@
 //   node tools/tune-oronyms.mjs [--tol 2] [--limit 12] [--set lmWeight=0.5,cutBonus=3]
 import fs from 'node:fs';
 import { buildIndex } from '../public/engine.js';
-import { buildPhraseIndex, readPhrase, findOronyms } from '../public/oronyms.js';
+import { buildPhraseIndex, readPhrase, findOronyms, pronounce, readBigrams } from '../public/oronyms.js';
 
 const read = f => fs.readFileSync(new URL(`../public/data/${f}`, import.meta.url), 'utf8');
 const index = buildIndex(read('words.txt'), read('vulgar.txt'));
 const lex = buildPhraseIndex(index);
+lex.bigrams = readBigrams(read('bigrams.txt'), index);
 const extra = new Map();
 for (const line of read('lexicon-extra.txt').split('\n')) {
   const tab = line.indexOf('\t');
   if (tab > 0 && !extra.has(line.slice(0, tab))) extra.set(line.slice(0, tab), line.slice(tab + 1));
 }
-const lookup = w => index.byWord.get(w)?.[0]?.code ?? extra.get(w);
+const lookup = (w, inPhrase) => pronounce(index, w, inPhrase) ?? extra.get(w);
 
 // Belege aus der Literatur und aus dem, was beim Ausprobieren überzeugt hat.
 const TARGETS = [
@@ -50,6 +51,23 @@ const TARGETS = [
   ['a tribute', 'attribute'],
   ['great ape', 'gray tape'],
   ['mishear it', 'miss see rid'],
+
+  // Zweite Runde (September 2026): Klassiker, die jeder als Erstes ausprobiert.
+  // Dafür kamen die schwachen Formen, die Doppelkonsonanten, der ungelöste
+  // Verschluss vor Nasalen und die Wortpaare dazu.
+  ['recognize speech', 'wreck a nice beach'],
+  ['kiss the sky', 'kiss this guy'],
+  ['stuffy nose', 'stuff he knows'],
+  ['gray day', 'grade a'],
+  ['known ocean', 'no motion'],
+  ['that stuff', "that's tough"],
+  ['mistake', 'miss steak'],
+  ['real eyes', 'realize'],
+  ['sandwich', 'sand witch'],
+  ['an ice cold shower', 'a nice cold shower'],
+  ['some others', 'some mothers'],
+  ['europe', "you're up"],
+  ['island', 'i land'],
 ];
 
 

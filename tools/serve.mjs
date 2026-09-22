@@ -15,8 +15,10 @@ const TYPES = {
 
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split('?')[0]);
+  // Wie die Weiterleitung in vercel.json.
+  if (url === '/') { res.writeHead(302, { location: '/spoonerize' }).end(); return; }
   // cleanUrls wie bei Vercel: /misheard -> misheard.html
-  let name = url === '/' ? 'index.html' : url.replace(/^\//, '');
+  let name = url.replace(/^\//, '');
   if (!path.extname(name)) name += '.html';
   const file = path.join(root, name);
   if (!file.startsWith(root)) { res.writeHead(403).end(); return; }

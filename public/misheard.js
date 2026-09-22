@@ -1,5 +1,5 @@
 import { buildIndex } from './engine.js';
-import { buildPhraseIndex, readPhrase, findOronyms } from './oronyms.js';
+import { buildPhraseIndex, readPhrase, findOronyms, pronounce, readBigrams } from './oronyms.js';
 import { toIPA } from './phonemes.js';
 import { stackSlider, faceSlider, noiseSlider, curveSlider } from './sliders.js';
 import { hasApi, voicesReady, say, stopSpeaking, mountVoiceControls } from './speak.js';
@@ -80,7 +80,9 @@ const tolerance = noiseSlider($('#tolerance'), {
     'as if across a room',
     'as if at a party',
   ],
-  value: 1,
+  // "Noisy": erst hier ist "recognize speech" / "wreck a nice beach" in
+  // Reichweite, und gegen die Messliste schneidet die Stufe am besten ab.
+  value: 2,
   onChange: () => run(),
 });
 
@@ -161,7 +163,7 @@ async function loadExtra() {
   return extra;
 }
 
-const lookup = word => index.byWord.get(word)?.[0]?.code ?? extra?.get(word);
+const lookup = (word, inPhrase) => pronounce(index, word, inPhrase) ?? extra?.get(word);
 
 /* ----------------------------------------------------------------- Anzeige */
 
@@ -358,6 +360,7 @@ function drawHeard(blocks) {
 function showMessageOnly(text, kind) {
   ribbon.hidden = true;
   readings.replaceChildren();
+  moreReadings.hidden = true;
   $('.playback').hidden = true;
   showNotice(text, kind);
 }
@@ -376,10 +379,22 @@ function strengths(hits) {
   return hits.map(h => Math.max(1 - (best - h.score) / SPAN, 0.26));
 }
 
+// Nur die ersten fünf stehen offen da; der Rest ist ab Platz sechs meist
+// Beiwerk und hinter "more" besser aufgehoben.
+const VISIBLE = 5;
+const moreReadings = $('#more-readings');
+moreReadings.addEventListener('click', () => {
+  readings.classList.add('expanded');
+  moreReadings.hidden = true;
+});
+
 function renderReadings(hits) {
   const weights = strengths(hits);
+  readings.classList.remove('expanded');
+  moreReadings.hidden = hits.length <= VISIBLE;
+  moreReadings.textContent = `${hits.length - VISIBLE} more`;
   readings.replaceChildren(...hits.map((h, i) => {
-    const li = el('li', 'reading' + (h.resegmented ? '' : ' same-cut'));
+    const li = el('li', 'reading' + (h.resegmented ? '' : ' same-cut') + (i >= VISIBLE ? ' extra' : ''));
     li.style.setProperty('--i', i);
     li.style.setProperty('--strength', weights[i].toFixed(3));
     li.append(el('span', 'reading-text', h.text));
@@ -442,10 +457,11 @@ function renderReadings(hits) {
 // Vorlagen, die wirklich etwas hergeben — dieselben, gegen die die Bewertung
 // eingestellt ist (tools/tune-oronyms.mjs).
 const EXAMPLES = [
-  'the sky', 'ice cream', 'four candles', 'why choose', 'a nice man',
+  'kiss the sky', 'ice cream', 'four candles', 'why choose', 'a nice man',
   'ice bank mice elf', 'iced ink', 'used ink', 'nitrate', 'illegal', 'attacks', 'mishear it',
   'the good can decay many ways', 'gray tape', 'some others',
   'myself', 'isle of man', 'stuff he knows', 'decadent', 'an aim',
+  'recognize speech', 'that stuff', 'an ice cold shower', 'known ocean', 'europe',
 ];
 
 // Sechs zufällige Vorlagen — bei jedem Seitenaufruf andere, damit man nicht
@@ -458,6 +474,58 @@ $('.examples').replaceChildren(...shown6.map(text => {
   return chip;
 }));
 
+/* --------------------------------------------------------------- Adresse */
+
+// Die Phrase und alle Regler, die nicht auf der Voreinstellung stehen, landen
+// in der Adresse — so lässt sich jeder Fund als Link weitergeben.
+const SETTINGS = { t: tolerance, v: vocabulary, o: taste, r: rudeness };
+const DEFAULT_SETTINGS = Object.fromEntries(Object.entries(SETTINGS).map(([k, s]) => [k, s.get()]));
+
+const params = new URLSearchParams(location.search);
+const fromLink = params.get('q')?.trim() || null;
+for (const [key, slider] of Object.entries(SETTINGS)) {
+  const value = Number(params.get(key));
+  if (params.has(key) && Number.isInteger(value)) slider.set(value);
+}
+
+function remember(text) {
+  const next = new URLSearchParams({ q: text });
+  for (const [key, slider] of Object.entries(SETTINGS)) {
+    if (slider.get() !== DEFAULT_SETTINGS[key]) next.set(key, slider.get());
+  }
+  history.replaceState(null, '', `${location.pathname}?${next.toString().replace(/%20/g, '+')}`);
+}
+
+/* ------------------------------------------------------------- Platzhalter */
+
+// Beim ersten Aufruf bleibt die Seite leer, damit einen nichts erschlägt. Der
+// Platzhalter tippt stattdessen Beispiele vor, und der Knopf nimmt bei leerem
+// Feld genau das, was gerade dasteht.
+const ghost = (() => {
+  const input = $('#input');
+  const base = input.placeholder;
+  const order = [...EXAMPLES].sort(() => Math.random() - 0.5);
+  let timer = 0;
+  let stopped = false;
+  const api = { current: null, stop() { stopped = true; clearTimeout(timer); input.placeholder = base; api.current = null; } };
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return api;
+
+  let k = 0;
+  const step = (text, shown, dir) => {
+    if (stopped) return;
+    if (dir > 0 && shown === text.length) { timer = setTimeout(() => step(text, shown, -1), 2200); return; }
+    if (dir < 0 && shown === 0) { k++; timer = setTimeout(next, 350); return; }
+    shown += dir;
+    input.placeholder = text.slice(0, shown) || base;
+    api.current = shown === text.length ? text : null;
+    timer = setTimeout(() => step(text, shown, dir), dir > 0 ? 70 : 30);
+  };
+  const next = () => step(order[k % order.length], 0, 1);
+  timer = setTimeout(next, 1400);
+  input.addEventListener('focus', () => { if (!input.value) input.placeholder = 'type a phrase'; });
+  return api;
+})();
+
 /* ------------------------------------------------------------------ Ablauf */
 
 async function run() {
@@ -467,10 +535,11 @@ async function run() {
   listen.classList.add('busy');
   stopSpeaking();
 
-  // Leeres Feld: dann eben eines der Beispiele, zufällig.
+  // Leeres Feld: dann das Beispiel, das der Platzhalter gerade zeigt.
   if (!$('#input').value.trim()) {
-    $('#input').value = EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)];
+    $('#input').value = ghost.current ?? EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)];
   }
+  ghost.stop();
   const text = $('#input').value.trim();
   let phrase = readPhrase(text, lookup);
 
@@ -504,6 +573,7 @@ async function run() {
     limit: Math.min(20, 9 + phrase.words.length * 2),
   });
 
+  remember(text);
   current = phrase;
   picked = hits[0] ?? null;
   drawPhrase(phrase);
@@ -522,16 +592,24 @@ listen.disabled = true;
 listen.classList.add('busy');
 showNotice('Reading dictionaries…');
 try {
-  const [w, v] = await Promise.all(['data/words.txt', 'data/vulgar.txt'].map(async url => {
+  const [w, v, b] = await Promise.all(['data/words.txt', 'data/vulgar.txt', 'data/bigrams.txt'].map(async url => {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
     return res.text();
   }));
   index = buildIndex(w, v);
   lex = buildPhraseIndex(index);
+  lex.bigrams = readBigrams(b, index);
   listen.disabled = false;
   listen.classList.remove('busy');
   showNotice('');
+
+  // Ein geteilter Link bringt seine Phrase mit.
+  if (fromLink) {
+    $('#input').value = fromLink;
+    ghost.stop();
+    run();
+  }
 
 
   // Unter Linux liefert speechSynthesis ohne speech-dispatcher keine einzige

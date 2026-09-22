@@ -1,7 +1,7 @@
 // Prüft die Invarianten des Generators über viele Durchläufe:
 //   node tools/check.mjs [anzahl]
 import fs from 'node:fs';
-import { buildIndex, generate } from '../public/engine.js';
+import { buildIndex, generate, generatePhrase, readPhrases } from '../public/engine.js';
 import { onsetLength } from '../public/phonemes.js';
 
 const N = Number(process.argv[2]) || 2000;
@@ -11,6 +11,8 @@ const index = buildIndex(
 
 /** Hat `w` genau diese Aussprache im Wörterbuch? */
 const known = (w, code) => (index.byWord.get(w) ?? []).some(e => e.code === code);
+const phrases = readPhrases(fs.readFileSync(new URL('../public/data/phrases.txt', import.meta.url), 'utf8'));
+const fromPhrases = opts => generatePhrase(index, phrases, opts);
 
 const cases = [
   { name: 'Standard', opts: {} },
@@ -21,22 +23,25 @@ const cases = [
   { name: 'derb: ohne Filter', opts: { vulgarity: 1 } },
   { name: 'derb: mindestens eins', opts: { vulgarity: 2 } },
   { name: 'derb: je Paar eins', opts: { vulgarity: 3 } },
+  { name: 'Phrasen', gen: fromPhrases, opts: {} },
+  { name: 'Phrasen, Top 3000', gen: fromPhrases, opts: { maxRank: 3000 } },
+  { name: 'Phrasen, derb: mindestens eins', gen: fromPhrases, opts: { vulgarity: 2, maxRank: 1e9 } },
 ];
 
 let bad = 0;
-for (const { name, opts } of cases) {
+for (const { name, opts, gen = o => generate(index, o) } of cases) {
   let fails = 0;
   const uniq = new Set();
   const t0 = performance.now();
   for (let i = 0; i < N; i++) {
-    const r = generate(index, opts);
+    const r = gen(opts);
     if (r.error) { fails++; continue; }
     const [[A, C], [B, D]] = r.pairs;
     uniq.add([A, B, C, D].map(x => x.word).sort().join(' '));
     for (const x of [A, B, C, D]) {
       if (!index.byWord.has(x.word)) { console.error('✗ kein echtes Wort:', x.word); bad++; }
+      if (x.word.includes("'")) { console.error('✗ Apostrophform:', x.word); bad++; }
     }
-    // Der Tausch muss aufgehen: A und B teilen den Reim, A und D den Anlaut usw.
     // Der Tausch muss aufgehen: A/B teilen den Reim, C/D auch,
     // und A/D bzw. B/C teilen den Anlaut.
     const bad0 = bad;

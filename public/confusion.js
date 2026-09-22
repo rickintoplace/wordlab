@@ -115,6 +115,7 @@ export const NEIGHBOURS = new Map();
 
 const VOWELS_SET = new Set([...Array(15).keys()].map(i => unstress(encodeMap.get(VOWEL_NAMES[i] + '1'))));
 const STOPS_ALL = new Set(['P', 'B', 'T', 'D', 'K', 'G'].map(n => encodeMap.get(n)));
+const NASALS = new Set(['M', 'N', 'NG'].map(n => encodeMap.get(n)));
 
 /**
  * Clustervereinfachung: ein Verschlusslaut zwischen zwei Konsonanten fällt im
@@ -125,19 +126,45 @@ const STOPS_ALL = new Set(['P', 'B', 'T', 'D', 'K', 'G'].map(n => encodeMap.get(
 export function elisionFactor(prevCh, nextCh, ch) {
   if (!STOPS_ALL.has(ch)) return 1;
   const consonant = c => c !== undefined && !VOWELS_SET.has(c);
-  return consonant(prevCh) && consonant(nextCh) ? 0.3 : 1;
+  if (consonant(prevCh) && consonant(nextCh)) return 0.3;
+  // Vor einem Nasal wird ein Verschlusslaut nicht durch den Mund gelöst,
+  // sondern durch die Nase: das Plosionsgeräusch fehlt, übrig bleibt eine
+  // kurze Pause. "recognize" klingt deshalb oft wie "reco'nize" — und daran
+  // hängt "wreck a nice beach".
+  if (NASALS.has(nextCh)) return 0.45;
+  return 1;
 }
 
 /** Laute, die beim Hören gern verschwinden oder dazukommen. */
 export const ELIDABLE = new Map([
   [encodeMap.get('HH'), 0.7],
   [unstress(encodeMap.get('AH1')), 0.8],
-  [encodeMap.get('T'), 1.6],
-  [encodeMap.get('D'), 1.6],
+  // Verschlusslaute nur in Umgebung billig genug, um zu zählen — siehe
+  // elisionFactor.
+  ...['T', 'D', 'P', 'B', 'K', 'G'].map(n => [encodeMap.get(n), 1.6]),
   [unstress(encodeMap.get('ER1')), 1.4],
 ]);
 
 export const cost = (a, b) => (a === b ? 0 : COST.get(a + b) ?? 9);
+
+/**
+ * Doppelkonsonanten. Stoßen zwei gleiche Konsonanten an einer Wortgrenze
+ * zusammen, spricht niemand zwei davon, sondern einen langen: "gas station"
+ * hat ein langes s, kein doppeltes. Ob da einer oder zwei waren, ist also kaum
+ * zu hören — in beide Richtungen. "mistake" wird so zu "miss steak", "some
+ * others" zu "some mothers". Dasselbe gilt für Stimmzwillinge, weil sich die
+ * Stimmhaftigkeit im Cluster angleicht: /zs/ in "recognize speech" ist ein
+ * langes s.
+ * @returns {number | undefined} Kosten, einen der beiden zu überhören
+ */
+export function geminateCost(ch, neighbour) {
+  if (neighbour === undefined || isVowel(ch)) return undefined;
+  if (ch === neighbour) return GEMINATE;
+  if (VOICE_TWIN.get(ch) === neighbour) return GEMINATE_TWIN;
+  return undefined;
+}
+export const GEMINATE = 0.3;
+const GEMINATE_TWIN = 0.45;
 
 const S = encodeMap.get('S');
 const pair = list => new Map(list.flatMap(([a, b]) =>
@@ -189,6 +216,8 @@ export const CLUSTER_VOICING = 0.5;
  * zwei — daran hängt "used ink" / "you stink". Liegt so ein Paar vor, liefert
  * die Funktion die beiden Ersatzlaute; sonst null.
  */
+export const voicingTwin = ch => VOICE_TWIN.get(ch);
+
 export function clusterTwins(a, b) {
   const x = VOICE_TWIN.get(a), y = VOICE_TWIN.get(b);
   if (x === undefined || y === undefined) return null;

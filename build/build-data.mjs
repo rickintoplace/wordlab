@@ -77,9 +77,10 @@ for (const [word, codes] of prons) {
   if (BLOCKED.has(word)) { stats.blocked++; continue; }
   const bare = plain(word);
   // Apostrophformen sind für die Eingabe unverzichtbar ("i can't see"), in der
-  // Ausgabe aber schädlich: sie verdoppeln lautgleiche Kandidaten ("cant" /
-  // "can't") und drängen bessere Lesarten aus der Liste. Sie landen deshalb nur
-  // im Eingabelexikon.
+  // Ausgabe aber oft schädlich: sie verdoppeln lautgleiche Kandidaten ("cant" /
+  // "can't", "dogs" / "dog's"). Sie kommen deshalb erst im zweiten Durchgang
+  // dazu, und nur, wo es die Form ohne Apostroph nicht gibt ("that's",
+  // "you're", "i'm") — sonst ist "that's tough" als Lesart unerreichbar.
   if (bare !== word) { stats.apostrophe++; continue; }
   if (!hasVowelLetter(bare)) { stats.abbrev++; continue; }
   // Einzelne Buchstaben sind Buchstabennamen, keine Wörter — außer diesen zweien.
@@ -91,6 +92,28 @@ for (const [word, codes] of prons) {
   const usable = codes.filter(c => countSyllables(c) <= MAX_SYLLABLES && onsetLength(c) < c.length);
   if (!usable.length) { stats.tooLong++; continue; }
   usable.forEach((code, i) => rows.push({ word, code, variant: i, f }));
+}
+
+// Apostrophformen, deren Form ohne Apostroph kein Ausgabewort ist.
+const S_HEADS = new Set(`he she it that what who where how when there here
+everyone everybody everything someone somebody something nobody nothing anyone
+anybody anything whatever`.split(/\s+/));
+const plainOutput = new Set(rows.map(r => r.word));
+for (const [word, codes] of prons) {
+  if (plain(word) === word || plainOutput.has(plain(word)) || BLOCKED.has(word)) continue;
+  // Nur Zusammenziehungen mit einem Wort davor, das selbst durchgekommen ist —
+  // "william's" und "l's" sind Namen und Buchstaben.
+  // Beim 's nur als "is"/"has" nach Pronomen und Fragewörtern ("that's",
+  // "where's"): sonst sind es Genitive wie "roman's", deren Häufigkeit geliehen
+  // ist.
+  const [, head, tail] = word.match(/^([a-z]+?)(n't|'(?:s|re|m|ll|ve|d))$/) ?? [];
+  if (!head || !plainOutput.has(head)) continue;
+  if (tail === "'s" && !S_HEADS.has(head)) continue;
+  const f = freq.get(plain(word)) ?? 0;
+  if (f < MIN_FREQ) continue;
+  const usable = codes.filter(c => countSyllables(c) <= MAX_SYLLABLES && onsetLength(c) < c.length);
+  usable.forEach((code, i) => rows.push({ word, code, variant: i, f }));
+  if (usable.length) stats.apostrophe--;
 }
 
 // Zweiter Durchgang: alles Übrige für die Eingabeseite einsammeln.

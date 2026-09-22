@@ -103,6 +103,7 @@ export function withDefaults(opts = {}) {
 function ok(entry, o, slot) {
   const p = o.pairs[slot];
   return entry.rank <= o.maxRank
+    && !entry.word.includes("'")          // "that's" ist für Misheard da
     && (o.allowVariants || entry.variant === 0)
     && (o.vulgarity !== VULGARITY.NONE || !entry.vulgar)
     && (o.allowVowelOnset || entry.onset.length > 0)
@@ -284,4 +285,73 @@ export function generate(index, opts = {}, rnd = Math.random) {
     if (rnd() < 0.5) for (const row of pairs) row.reverse();
   }
   return { pairs };
+}
+
+/**
+ * Baut den Spoonerismus zu einer gegebenen ersten Zeile nach — für geteilte
+ * Links. Probiert alle Aussprachen beider Wörter, die erste passende gewinnt.
+ * @returns {{pairs: [any, any][]} | {error: 'unknown-word' | 'no-match'}}
+ */
+export function fromLine(index, first, second, opts = {}) {
+  const o = { ...withDefaults(opts), maxRank: Infinity, allowVariants: true,
+    vulgarity: VULGARITY.ANY, allowVowelOnset: true };
+  o.pairs = [0, 1].map(() => ({ minLetters: 1, maxLetters: 40, minSyllables: 1, maxSyllables: 8 }));
+  const as = index.byWord.get(first), cs = index.byWord.get(second);
+  if (!as || !cs) return { error: 'unknown-word' };
+  for (const a of as) {
+    for (const c of cs) {
+      if (a.onset === c.onset) continue;
+      if (!best(index, a.rime, c.onset, o, 0) || !best(index, c.rime, a.onset, o, 1)) continue;
+      return { pairs: [
+        [describe(index, a.rime, a.onset, o, 0, first), describe(index, c.rime, c.onset, o, 1, second)],
+        [describe(index, a.rime, c.onset, o, 0), describe(index, c.rime, a.onset, o, 1)],
+      ] };
+    }
+  }
+  return { error: 'no-match' };
+}
+
+/**
+ * Liest data/phrases.txt: Spoonerismen, deren beide Zeilen so tatsächlich
+ * gesagt werden (gezählt in Untertiteln, siehe build/build-phrases.mjs).
+ * Zeilenformat: wortA  wortC  wortB  wortD  bewertung, die besten zuerst.
+ */
+export function readPhrases(text) {
+  return text.split('\n').filter(Boolean).map(line => {
+    const [a, c, b, d, score] = line.split('\t');
+    return { words: [a, c, b, d], score: Number(score) };
+  });
+}
+
+/**
+ * Zieht einen Spoonerismus aus der Phrasenliste. Wortschatz, Derbheit und
+ * Startwort gelten wie beim freien Würfeln; Längen und Silben nicht — die
+ * Liste ist ohnehin kurz.
+ * @returns {{pairs: [any, any][]} | {error: 'no-match'}}
+ */
+export function generatePhrase(index, phrases, opts = {}, rnd = Math.random) {
+  const o = withDefaults(opts);
+  const seed = opts.seedWord?.trim().toLowerCase();
+  const vulgar = w => index.byWord.get(w)?.[0]?.vulgar ?? false;
+  const rank = w => index.byWord.get(w)?.[0]?.rank ?? Infinity;
+
+  const pool = phrases.filter(p => {
+    if (seed && !p.words.includes(seed)) return false;
+    // Das Startwort darf seltener sein als der Regler erlaubt.
+    if (p.words.some(w => w !== seed && rank(w) > o.maxRank)) return false;
+    const [a, c, b, d] = p.words.map(vulgar);
+    if (o.vulgarity === VULGARITY.NONE) return !(a || b || c || d);
+    if (o.vulgarity === VULGARITY.SOME) return a || b || c || d;
+    if (o.vulgarity === VULGARITY.MOST) return (a || b) && (c || d);
+    return true;
+  });
+  if (!pool.length) return { error: 'no-match' };
+
+  const pick = pool[biased(pool.length, 1.6, rnd)];
+  const [a, c] = pick.words;
+  const out = fromLine(index, a, c);
+  if (out.error) return out;
+  // Zeilen dürfen tauschen, Spalten nicht: "tricks magic" sagt niemand.
+  if (seed ? !out.pairs[0].some(x => x.word === seed) : rnd() < 0.5) out.pairs.reverse();
+  return out;
 }

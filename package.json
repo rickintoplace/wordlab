@@ -1,20 +1,24 @@
 {
   "name": "spoonerisms",
   "version": "1.0.0",
-  "description": "Phonetische Wortspiel-Werkzeuge (Englisch): Spoonerismen und Oronyme",
+  "description": "Phonetic word play for English: spoonerisms that swap sounds, and mishearings that re-cut the same sounds into other words",
   "scripts": {
     "dev": "node tools/serve.mjs",
     "data": "node build/build-data.mjs",
+    "bigrams:count": "curl -s https://object.pouta.csc.fi/OPUS-OpenSubtitles/v2018/mono/en.txt.gz | gunzip | head -n 40000000 | node --max-old-space-size=6000 build/count-bigrams.mjs",
+    "bigrams": "node build/build-bigrams.mjs",
+    "phrases": "node build/build-phrases.mjs",
     "check": "node tools/check.mjs",
     "try": "node tools/try.mjs",
     "try:misheard": "node tools/try-oronyms.mjs",
-    "tune": "node tools/tune-oronyms.mjs"
+    "tune": "node tools/tune-oronyms.mjs",
+    "census": "node tools/census.mjs"
   },
-  "keywords": [],
   "type": "module",
   "dependencies": {
     "dictionary-en": "^4.0.0",
     "nspell": "^2.1.5"
   },
-  "private": true
+  "private": true,
+  "license": "MIT"
 }

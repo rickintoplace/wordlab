@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Oronyms and Mondegreens | wordlab</title>
   <meta name="description" content="Type a phrase and see every other way the same chain of sounds can be cut into English words.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Misheard — every other way to hear a phrase">
+  <meta property="og:description" content="Type a phrase and see every other way the same sounds can be cut into English words: kiss the sky → kiss this guy.">
+  <meta property="og:url" content="https://wordlab.rickinto.place/misheard">
+  <meta name="twitter:card" content="summary">
   <meta name="theme-color" content="#131517">
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -26,9 +31,11 @@
 
 <body data-page="misheard">
   <nav class="site-nav">
-    <a class="brand" href="/"><span data-icon="flask-conical"></span><span class="brand-name">wordlab</span></a>
-    <div class="tabs">
-      <a href="/">Spoonerize</a>
+    <a class="brand" href="/misheard"><span data-icon="flask-conical"></span><span class="brand-name">wordlab</span></a>
+    <!-- Die beiden Werkzeuge stehen vorerst für sich; zum Verknüpfen
+         "hidden" entfernen. -->
+    <div class="tabs" hidden>
+      <a href="/spoonerize">Spoonerize</a>
       <a href="/misheard" aria-current="page">Misheard</a>
     </div>
     <span data-theme-switch></span>
@@ -73,6 +80,7 @@
     <div class="playback"></div>
 
     <ol id="readings" class="readings"></ol>
+    <button id="more-readings" class="more-readings" type="button" hidden></button>
 
     <section class="options">
       <div class="cards">
@@ -85,9 +93,10 @@
 
     <footer class="credits">
       Pronunciations from the <a href="https://github.com/cmusphinx/cmudict">CMU Pronouncing Dictionary</a>,
-      word frequencies from <a href="https://github.com/hermitdave/FrequencyWords">OpenSubtitles</a>.
-      Confusion costs follow <a href="https://doi.org/10.1121/1.1907526">Miller &amp; Nicely (1955)</a>:
-      in noise, voicing survives and place of articulation does not.
+      word frequencies from <a href="https://github.com/hermitdave/FrequencyWords">OpenSubtitles</a>,
+      word pairs counted in 40 million lines of <a href="https://opus.nlpl.eu/OpenSubtitles/corpus/version/OpenSubtitles">OpenSubtitles</a>.
+      Confusion costs start from <a href="https://doi.org/10.1121/1.1907526">Miller &amp; Nicely (1955)</a>
+      and depend on the neighbouring sounds.
     </footer>
   </main>
 

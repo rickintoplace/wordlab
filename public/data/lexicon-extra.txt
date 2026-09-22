@@ -2900,11 +2900,8 @@ anway	PluG
 anwell	PluEj
 anwyl	zluWj
 anwyll	zluWj
-anybody's	ElXaPcXw
 anyon	ElXNl
 anyone'll	ElXuAlPj
-anyone's	ElXuAlw
-anything's	ElXsHmw
 anytime'll	ElXrDkPj
 anytime's	ElXrDkw
 anza	zlwP
@@ -3241,8 +3238,6 @@ arel	NoEj
 arellanes	zoWjGlw
 arellano	NoTjylY
 aren	yoPl
-aren't	yoPlr
-aren't	yolr
 arena's	UIlPw
 arenaball	UIlPaBj
 arencibia	NoTlbIaXP
@@ -16250,9 +16245,6 @@ coughlan	iBfjPl
 coughlin	iBfjWl
 coughran	iBfoPl
 couillard	iuXjyoc
-could've	iLcPt
-couldn't	iLcPlr
-couldn't	iLcPl
 coull	iCj
 coulombe	iRjJkaX
 coulon	iCjPl
@@ -19848,10 +19840,6 @@ didier	cHcXU
 didinium	cWcHlXPk
 didion	cHcXPl
 didion's	cHcXPlw
-didn't	cHcPlr
-didn't	cHclr
-didn't	cHcPl
-didn't	cHlr
 didomenico	cWcYkElWiJ
 didonato	cWcYlyrJ
 didonna	cWcylN
@@ -20570,8 +20558,6 @@ doerner	cBolU
 doerr	cBo
 doersam	cBopPk
 doescher	cJqU
-doesn't	cAwPlr
-doesn't	cAwPl
 doetsch	cJb
 dofasco	cPezpiY
 doffs	cBep
@@ -20749,8 +20735,6 @@ domtar	cykrU
 domtar's	cykrUw
 domzalski	cPkwyjpiX
 don's	cylw
-don't	cJlr
-don't	cJl
 don'ts	cJlrp
 don'ts	cJlp
 donadio	cYlycXY
@@ -24245,11 +24229,8 @@ evert	WtFr
 everton	EtUrPl
 everts	EtUrp
 everybody'd	EtoXaycXc
-everybody's	EtoXaycXw
 everyman	EtoXkPl
 everyman's	EtoXkPlw
-everyone's	EtoXuAlw
-everything's	EtoXsHmw
 everythings	EtoXsHmw
 everytime	EtoXrDk
 evett	EtWr
@@ -31755,8 +31736,6 @@ hadler	gGcjU
 hadley	gzcjX
 hadline	gzcjSl
 hadlock	gzcjPi
-hadn't	gzcPlr
-hadn't	gzcPl
 hadnot	gzclPr
 hadoop	gzcMn
 hadoya	gPcKP
@@ -32842,7 +32821,6 @@ hasler	gzpjU
 haslett	gzpjWr
 hasley	gzwjX
 hasman	gzpkPl
-hasn't	gzwPlr
 haso	gypJ
 haso's	gypJw
 haspel	gzpnPj
@@ -32995,8 +32973,6 @@ havelka	gPtEjiP
 havelock	gztjyi
 haveman	gGtkPl
 havemann	gztPkPl
-haven't	gztPlr
-haven't	gztPl
 havener	gztXlU
 haver	gEtU
 haverfield	gztUeIjc
@@ -33124,9 +33100,7 @@ hazzard	gzwUc
 hbo	GbaXJ
 hbox	GbaBip
 hces	GbpIIEp
-he'd	gIc
 he'll	gIj
-he's	gIw
 heaberlin	gIaUjWl
 heacock	gIiPi
 heacox	gIiNip
@@ -33894,7 +33868,6 @@ herda	gEocP
 herdal	gEocPj
 herdman	gFckPl
 herdt	gFr
-here's	gHow
 heredia	gUEcXP
 hereford	gEoPeUc
 herendeen	gHolcXl
@@ -35593,9 +35566,6 @@ hovnanian	gytlGlXPl
 hovorka	gPtBoiP
 hovsepian	gPtpInXPl
 hovy	gJtX
-how'd	gCc
-how're	gCU
-how's	gCw
 howald	gCPjc
 howard	gCUc
 howard's	gCUcw
@@ -36329,10 +36299,7 @@ hz	gFrw
 i'd	Dc
 i'ers	DUw
 i'll	Dj
-i'm	Dk
-i'm	Pk
 i's	Dw
-i've	Dt
 ia	IP
 iacobelli	XyiYaEjX
 iacobellis	XyiYaEjWp
@@ -37504,9 +37471,6 @@ isley	DwjX
 islip	DpjWn
 ismael	HpkVj
 ismail	HpkVj
-isn't	HwPlr
-isn't	WwPlr
-isn't	HwPl
 isner	HplU
 isobel	DpQaEj
 isocyanate	DpPpDPlGr
@@ -37573,9 +37537,6 @@ isty	DEprIuD
 isu	HpM
 isu	DEpvM
 isuzu	HpMwM
-it'd	HrPc
-it'll	HrPj
-it'll	Hrj
 it's	Hrp
 it's	Wrp
 ita	DrP
@@ -53765,12 +53726,10 @@ musso	kMpY
 mussolini	kMpYjIlX
 mussolini's	kMpYjIlXw
 musson	kApPl
-must've	kAprWt
 mustafa	k1pryeP
 mustain	kPprGl
 mustards	kAprUcw
 mustin	kAprWl
-mustn't	kApPlr
 musto	kAprY
 mustoe	kAprY
 muston	kAprPl
@@ -54386,7 +54345,6 @@ needlelike	lIcPjjDi
 needleman	lIcPjkPl
 needler	lIcPjU
 needler	lIcjU
-needn't	lIcPlr
 neef	lIe
 neel	lIj
 neeld	lIjc
@@ -55301,8 +55259,6 @@ noblin	lyajWl
 noblitt	lyajWr
 nobody'd	lJaycIc
 nobody'd	lJaPcXc
-nobody's	lJaycIw
-nobody's	lJaPcXw
 noboru	lYaBo1
 nobrega	lyaoWfP
 nobriga	lyaoWfP
@@ -69705,7 +69661,6 @@ shchedrin	qEcoWl
 shcherbitsky	qUaHrpiX
 she'd	qIc
 she'll	qIj
-she's	qIw
 shea	qG
 shea's	qGw
 shead	pgEc
@@ -70207,8 +70162,6 @@ shotts	qyrp
 shotwell	qyruEj
 shougang	qCfym
 shough	qC
-should've	qLcPt
-shouldn't	qLcPlr
 shouli	qMjX
 shoults	qJjrp
 shoultz	qJjrp
@@ -71689,8 +71642,6 @@ somaliland	pPkyjXjzlc
 somalis	pPkyjXw
 somatogen	pJkzrPhTl
 somatotropin	pJkPryroPnWl
-somebody's	pAkaycXw
-someone's	pAkuAlw
 somer	pAkU
 somers	pAkUw
 somerton	pAkUrPl
@@ -75964,7 +75915,6 @@ thaser	sGwU
 thassos	szpYp
 that'd	dzrWc
 that'll	dzrPj
-that's	dzrp
 that've	dzrPt
 thatcher's	szbUw
 thatcherism	szbUHwPk
@@ -76045,10 +75995,6 @@ therapist's	sEoPnPprp
 therapist's	sEoPnWprp
 therapists's	sEoPnWprp
 therat	dEozr
-there'd	dEoc
-there'll	dEoPj
-there're	dEoU
-there's	dEow
 there've	dEot
 theresa	rUIpP
 theresa	rUGpP
@@ -76080,10 +76026,6 @@ thetis	sIrPp
 theurer	sFU
 theus	dvMw
 thewlis	svMjWp
-they'd	dGc
-they'll	dGj
-they're	dEo
-they've	dGt
 thi	sI
 thiamin	sDPkPl
 thibadeau	rHaPcY
@@ -81035,8 +80977,6 @@ wasley	uBpjX
 wasmer	uBpPkU
 wasmund	uBwkPlc
 wasmuth	uBwk1s
-wasn't	uywPlr
-wasn't	uAwPlr
 wason	uypPl
 wasp's	uypnp
 wass	uAp
@@ -81165,7 +81105,6 @@ we'll	uHj
 we're	uIo
 we're	uHo
 we're	uF
-we've	uIt
 weakland	uIijPlc
 weakley	uIijX
 weaks	uIip
@@ -81609,8 +81548,6 @@ werden	uFcPl
 werder	uFcU
 werdesheim	uFcwgDk
 wereldhave	uEoPjcgytV
-weren't	uFPlr
-weren't	uFlr
 wergin	uFfWl
 werk	uFi
 werke	uFi
@@ -81869,18 +81806,12 @@ wharry	uzoX
 wharry	guzoX
 wharton	uBorPl
 wharton's	uBorPlw
-what'd	uArWc
-what'd	guArWc
 what'll	uArPj
 what'll	guArPj
-what're	uArU
-what're	guArU
 what's	uArp
 what's	guArp
 what've	uArPt
 whate	uGr
-whatever's	uArEtUw
-whatever's	guArEtUw
 whatley	uArjX
 whatley	guArjX
 whatsapp	uArpyn
@@ -81938,13 +81869,7 @@ whelton	uEjrPl
 whelton	guEjrPl
 when'll	uElPj
 when'll	guElPj
-when's	uElw
-when's	guElw
-where'd	uEoc
-where'd	guEoc
 where're	uEoU
-where's	uEow
-where's	guEow
 where've	uEoPt
 wherley	uFjX
 wherley	guFjX
@@ -82218,10 +82143,8 @@ whitworth	uHruFs
 whitworth	guHruFs
 whizzer	uHwU
 whizzer	guHwU
-who'd	gMc
 who'll	gMj
 who're	gMU
-who's	gMw
 who've	g1t
 whobrey	uyaoX
 whoever's	g1EtUw
@@ -83332,8 +83255,6 @@ wotring	uyrUWm
 wotton	uyrPl
 wouk	uMi
 wouk	uJi
-would've	uLcPt
-wouldn't	uLcPlr
 woulfe	uCje
 wouters	uCrUw
 wow's	uCw
@@ -84006,12 +83927,6 @@ yossi	vJpX
 yost	vJpr
 yother	vAdU
 yott	vyr
-you'd	vMc
-you'd	vLc
-you'll	vMj
-you're	vLo
-you're	vMo
-you've	vMt
 youell	vy1j
 youghal	vJPj
 youker	vCiU

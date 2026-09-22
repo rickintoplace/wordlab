@@ -375,6 +375,12 @@ body.intro .title .letter {
 .checks input { accent-color: var(--primary-color); margin-right: .45rem; vertical-align: middle; }
 .checks small { color: var(--muted); }
 
+.phrase-toggle { display: flex; gap: .55rem; align-items: baseline; font-size: .95rem; line-height: 1.5; cursor: pointer; }
+.phrase-toggle input { accent-color: var(--primary-color); transform: translateY(1px); }
+.phrase-toggle small { color: var(--muted); }
+/* Mit echten Wortpaaren zählen Längen und Silben nicht (app.js). */
+body.phrase-mode .free-only { display: none !important; }
+
 #more-button {
   align-self: center;
   display: flex;
@@ -818,6 +824,8 @@ body[data-page="misheard"] .cards { grid-template-columns: repeat(auto-fit, minm
 .brand:hover { color: var(--c-onset-1); }
 
 .tabs { display: flex; justify-self: center; gap: .25rem; }
+.tabs[hidden] { display: none; }
+.tabs[hidden] + * { grid-column: 3; }
 
 .tabs a {
   font-size: 11px;
@@ -1172,6 +1180,24 @@ body[data-page="misheard"] .cards { grid-template-columns: repeat(auto-fit, minm
   animation-delay: calc(var(--i) * 35ms);
 }
 .reading:hover { background: var(--card-bg); }
+/* Ab Platz sechs erst auf Wunsch (misheard.js, VISIBLE). */
+.readings:not(.expanded) .reading.extra { display: none; }
+
+.more-readings {
+  margin-top: -1rem;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: .4rem .7rem;
+  border-radius: 6px;
+  transition: color .2s;
+}
+.more-readings:hover { color: var(--fg); }
+.more-readings[hidden] { display: none; }
 .reading.picked { background: var(--card-bg); box-shadow: var(--card-shadow); }
 
 .reading-text {

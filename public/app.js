@@ -1,4 +1,4 @@
-import { buildIndex, generate, PAIR_DEFAULTS } from './engine.js';
+import { buildIndex, generate, generatePhrase, fromLine, readPhrases, PAIR_DEFAULTS } from './engine.js';
 import { faceSlider, stackSlider } from './sliders.js';
 import { icon } from './icons.js';
 import { voicesReady, say, sayAll, stopSpeaking, mountVoiceControls } from './speak.js';
@@ -259,6 +259,12 @@ function currentOptions() {
   };
 }
 
+// Mit Phrasen zählen Längen und Silben nicht — die Regler treten zurück.
+const phrasesBox = $('#phrases');
+const syncMode = () => document.body.classList.toggle('phrase-mode', phrasesBox.checked);
+phrasesBox.addEventListener('change', syncMode);
+syncMode();
+
 const moreButton = $('#more-button');
 moreButton.addEventListener('click', () => {
   const open = $('#more').classList.toggle('open');
@@ -273,20 +279,25 @@ const button = $('#generate');
 const result = $('#result');
 const actions = $('.actions');
 let index = null;
+let phrases = [];
 let last = null;
+// Steht eine Stimme zur Verfügung? Wird weiter unten geprüft, aber schon beim
+// Laden gebraucht, wenn ein geteilter Link sofort ein Ergebnis zeigt.
+let speech = false;
 
 button.classList.add('busy');
 try {
-  const [words, vulgar] = await Promise.all(
-    ['data/words.txt', 'data/vulgar.txt'].map(async url => {
+  const [words, vulgar, phraseText] = await Promise.all(
+    ['data/words.txt', 'data/vulgar.txt', 'data/phrases.txt'].map(async url => {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
       return res.text();
     }));
   index = buildIndex(words, vulgar);
+  phrases = readPhrases(phraseText);
   button.disabled = false;
   button.classList.remove('busy');
-  showHint();
+  if (!showLinked()) showHint();
 } catch (err) {
   button.classList.remove('busy');
   showMessage(`Could not load the word list (${err.message}).`);
@@ -404,8 +415,17 @@ async function run() {
     result.classList.remove('leaving');
   }
 
-  const outcome = generate(index, opts);
   const seed = opts.seedWord.trim();
+  let outcome = phrasesBox.checked ? generatePhrase(index, phrases, opts) : generate(index, opts);
+  // Kein echtes Wortpaar mit diesem Startwort? Dann eben frei gewürfelt.
+  let fellBack = false;
+  if (phrasesBox.checked && outcome.error && seed) {
+    outcome = generate(index, opts);
+    fellBack = !outcome.error;
+  }
+  $('#seed-hint').textContent = fellBack
+    ? `No everyday phrase with “${seed}”, so any words.`
+    : 'Leave empty for a random one.';
 
   if (outcome.error === 'unknown-word') {
     showMessage(`<strong>${escapeHtml(seed)}</strong> is not in the pronunciation dictionary.`);
@@ -415,9 +435,7 @@ async function run() {
       ? `No spoonerism found for <strong>${escapeHtml(seed)}</strong>. Try loosening the options.`
       : 'Nothing found — try loosening the options.');
   } else {
-    last = outcome.pairs;
-    render(outcome.pairs);
-    actions.hidden = false;
+    show(outcome.pairs);
   }
 
   await wait(520);                       // bis der letzte Buchstabe sitzt
@@ -429,11 +447,30 @@ async function run() {
 
 const lines = () => last.map(row => row.map(x => x.word).join(' '));
 
+function show(pairs) {
+  last = pairs;
+  render(pairs);
+  actions.hidden = false;
+  // Die erste Zeile genügt, um alles wiederherzustellen.
+  const q = new URLSearchParams({ w: `${pairs[0][0].word} ${pairs[0][1].word}` });
+  history.replaceState(null, '', `${location.pathname}?${q.toString().replace(/%20/g, '+')}`);
+}
+
+/** Ein geteilter Link zeigt sein Ergebnis gleich beim Laden. */
+function showLinked() {
+  const params = new URLSearchParams(location.search);
+  const [first, second] = (params.get('w') ?? '').toLowerCase().trim().split(/\s+/);
+  if (!first || !second) return false;
+  const outcome = fromLine(index, first, second);
+  if (outcome.error) return false;
+  show(outcome.pairs);
+  return true;
+}
+
 // Gelesen sind die beiden Zeilen verschieden, gesprochen hört man den Tausch.
 // Der Knopf erscheint nur, wenn der Browser wirklich eine Stimme hat — unter
 // Linux fehlt dafür oft speech-dispatcher. Nicht abwarten: ohne Stimmen läuft
 // die Prüfung in einen Zeitablauf, und so lange darf hier nichts stillstehen.
-let speech = false;
 voicesReady().then(ok => {
   speech = ok;
   if (!ok) return;
@@ -453,10 +490,10 @@ $('#copy').addEventListener('click', async e => {
   setTimeout(() => { e.target.textContent = 'Copy'; }, 1500);
 });
 
-$('#sentence').addEventListener('click', () => {
-  const [a, b] = lines();
-  const q = `Write one short, funny saying that uses these four words: ${a} ${b}.`;
-  window.open('https://chat.openai.com/?q=' + encodeURIComponent(q), '_blank', 'noopener');
+$('#link').addEventListener('click', async e => {
+  await navigator.clipboard.writeText(location.href);
+  e.target.textContent = 'Link copied!';
+  setTimeout(() => { e.target.textContent = 'Copy link'; }, 1500);
 });
 
 /* Schütteln am Telefon löst die Suche aus — wie in der deutschen Fassung. */

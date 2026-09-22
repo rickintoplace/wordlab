@@ -4132,6 +4132,8 @@ assignment	PpDlkPlr	0
 blonde	ajylc	0
 catching	izbWm	0
 exposed	WipnJwc	0
+don't	cJlr	0
+don't	cJl	1
 comedy	iykPcX	0
 stroke	proJi	0
 whistling	uHpjWm	0
@@ -5361,6 +5363,8 @@ protocol	noJrPiBj	1
 muscles	kApPjw	0
 kidney	iHclX	0
 finishing	eHlWqWm	0
+i'm	Dk	0
+i'm	Pk	1
 products	noycPirp	0
 products	noycPip	1
 affection	PeEiqPl	0
@@ -7481,6 +7485,7 @@ hysterical	gWprEoWiPj	0
 taller	rBjU	0
 employment	TknjKkPlr	0
 employment	WknjKkPlr	1
+that's	dzrp	0
 agrees	PfoIw	0
 dodge	cyh	0
 unite	vMlDr	0
@@ -12629,6 +12634,8 @@ snarls	plyojw	0
 considers	iPlpHcUw	0
 flawless	ejBjPp	0
 harmful	gyokePj	0
+you're	vLo	0
+you're	vMo	1
 admits	PckHrp	0
 horseback	gBopazi	0
 esteemed	WprIkc	0
@@ -13147,6 +13154,10 @@ tempo	rEknJ	0
 bumpy	aAknX	0
 cheeseburger	bIwaUfU	0
 chime	bDk	0
+didn't	cHcPlr	0
+didn't	cHclr	1
+didn't	cHcPl	2
+didn't	cHlr	3
 harass	gUzp	0
 maternal	kPrFlPj	0
 stomp	prykn	0
@@ -14773,6 +14784,7 @@ persecuted	nFpPivMrWc	0
 persuasion	nUpuGxPl	0
 piglet	nHfjWr	0
 trampled	rozknPjc	0
+he's	gIw	0
 inability	HlPaHjWrX	0
 shalom	qPjJk	0
 toil	rKj	0
@@ -15902,6 +15914,7 @@ faction	eziqPl	0
 fished	eHqr	0
 fragrant	eoGfoPlr	0
 glands	fjzlcw	0
+i've	Dt	0
 legions	jIhPlw	0
 palaces	nzjPpPw	0
 palaces	nzjPpWw	1
@@ -15922,6 +15935,7 @@ heirloom	EojMk	0
 intensifies	WlrElpPeDw	0
 merrily	kEoPjX	0
 swarming	puBokWm	0
+there's	dEow	0
 unified	vMlPeDc	0
 campers	izknUw	0
 cheered	bHoc	0
@@ -19362,6 +19376,7 @@ parliamentary	nyojPkElrUX	0
 parliamentary	nyojPkElUX	1
 retrospect	oEroPpnEir	0
 shard	qyoc	0
+she's	qIw	0
 skillful	piHjePj	0
 stabs	przaw	0
 transponder	roOlpnylcU	0
@@ -19382,6 +19397,8 @@ comprehension	iyknoXgElqPl	0
 deceptive	cWpEnrWt	0
 determining	cWrFkPlWm	0
 diminish	cWkHlWq	0
+doesn't	cAwPlr	0
+doesn't	cAwPl	1
 druid	coMWc	0
 enroll	TloJj	0
 enroll	WloJj	1
@@ -20197,6 +20214,9 @@ enforcer	TleBopU	0
 entree	ylroG	0
 escalating	EpiPjGrWm	0
 halftime	gzerDk	0
+isn't	HwPlr	0
+isn't	WwPlr	1
+isn't	HwPl	2
 mallard	kzjUc	0
 nimble	lHkaPj	0
 planks	njzmip	0
@@ -22529,6 +22549,7 @@ remodel	oXkycPj	0
 restitution	oEprWrMqPl	0
 roundup	oClcAn	0
 tailored	rGjUc	0
+they're	dEo	0
 workaholic	uFiPgyjWi	0
 composure	iPknJxU	0
 gearbox	fHoayip	0
@@ -23555,6 +23576,8 @@ drifts	coHerp	0
 endeavors	WlcEtUw	0
 flees	ejIw	0
 gawking	fBiWm	0
+haven't	gztPlr	0
+haven't	gztPl	1
 huzzah	gLwy	0
 inoperable	HlynUPaPj	0
 lino	jIlY	0
@@ -24265,6 +24288,7 @@ thirteenth	sFrIls	0
 triumphed	roDPker	0
 unbridled	PlaoDcPjc	0
 unsatisfied	PlpzrWpeDc	0
+you'll	vMj	0
 acronym	zioPlWk	0
 assimilate	PpHkPjGr	0
 barometer	aUykWrU	0
@@ -24478,6 +24502,7 @@ tortoises	rBorPpPw	0
 transcribed	roOlpioDac	0
 trilogy	roHjPhX	0
 voluptuous	tPjAnbPuPp	0
+you've	vMt	0
 angling	zmfjWm	0
 bushy	aLqX	0
 clucks	ijAip	0
@@ -24742,6 +24767,7 @@ capers	iGnUw	0
 fissure	eHqU	0
 fuselage	evMpPjyh	0
 fuselage	evMpPjWh	1
+how's	gCw	0
 imperialist	HknHoXPjWpr	0
 mediate	kIcXGr	0
 methamphetamine	kEsOkeErPkXl	0
@@ -26501,10 +26527,14 @@ spearhead	pnHogEc	0
 tatters	rzrUw	0
 toppled	rynPjc	0
 tributes	roHav1rp	0
+wasn't	uywPlr	0
+wasn't	uAwPlr	1
 burg	aFf	0
 cask	izpi	0
 cheetahs	bIrPw	0
 corrie	iBoX	0
+couldn't	iLcPlr	0
+couldn't	iLcPl	1
 diagonal	cSzfPlPj	0
 discontinue	cWpiPlrHlv1	0
 forgo	eQofJ	0
@@ -26521,6 +26551,7 @@ sustains	pPprGlw	0
 telex	rEjEip	0
 thickens	sHiPlw	0
 toiled	rKjc	0
+who's	gMw	0
 additions	PcHqPlw	0
 applicable	znjPiPaPj	0
 arbiter	yoaWrU	0
@@ -26770,6 +26801,8 @@ thistle	sHpPj	0
 vindicated	tHlcPiVrWc	0
 wounding	uMlcWm	0
 affidavits	zeWcGtWrp	0
+aren't	yoPlr	0
+aren't	yolr	1
 ascendant	PpElcPlr	0
 astonishment	PprylWqkPlr	0
 bailout	aGjCr	0
@@ -26829,6 +26862,7 @@ vaccinations	tzipPlGqPlw	0
 vaporize	tGnUDw	0
 waterways	uBrUuGw	0
 woodman	uLckPl	0
+wouldn't	uLcPlr	0
 anomalous	PlykPjPp	0
 breakdowns	aoGicClw	0
 cordially	iBohPjX	0
@@ -27326,6 +27360,7 @@ subsided	pPapDcWc	0
 unattached	AlPrzbr	0
 unwed	PluEc	0
 uppers	AnUw	0
+we've	uIt	0
 amenable	PkElPaPj	0
 amenable	PkIlPaPj	1
 amounted	PkClrWc	0
@@ -29323,6 +29358,7 @@ roughest	oAePpr	0
 screenings	pioIlWmw	0
 skimp	piHkn	0
 snowboard	plJaBoc	0
+someone's	pAkuAlw	0
 soybeans	pKaIlw	0
 strobe	proJa	0
 unsigned	PlpDlc	0
@@ -31396,6 +31432,8 @@ triumphal	roSAkePj	0
 viability	tSPaHjPrX	0
 victimless	tHirPkjPp	0
 visionaries	tHxPlToXw	0
+where's	uEow	0
+where's	guEow	1
 aberrant	OaEoPlr	0
 achy	GiX	0
 aggressors	PfoEpUw	0
@@ -31665,6 +31703,8 @@ vetoed	tIrJc	0
 watchdogs	uybcBfw	0
 wickets	uHiPrp	0
 wickets	guHiPrp	1
+you'd	vMc	0
+you'd	vLc	1
 alloys	zjKw	0
 amassing	PkzpWm	0
 annexed	zlTipr	0
@@ -32257,6 +32297,7 @@ respondent	oWpnylcPlr	0
 sainthood	pGlrgLc	0
 scoping	piJnWm	0
 sequential	pPiuElqPj	0
+shouldn't	qLcPlr	0
 stencil	prElpWj	0
 timelines	rDkjSlw	0
 twang	ruym	0
@@ -32453,6 +32494,7 @@ doubters	cCrUw	0
 fillets	eHjWrp	0
 herbalist	FaPjPpr	0
 herbalist	gFaPjPpr	1
+here's	gHow	0
 impeccably	HknEiPajX	0
 inasmuch	HlzpkPi	0
 incapacitate	HliPnzpWrGr	0
@@ -33073,6 +33115,7 @@ cruised	ioMwc	0
 culvert	iAjtUr	0
 derision	cUHxPl	0
 etching	EbWm	0
+everything's	EtoXsHmw	0
 facilitating	ePpHjPrGrWm	0
 fraternize	eozrUlDw	0
 grins	foHlw	0
@@ -34509,6 +34552,7 @@ enclosing	TlijJwWm	0
 enrage	TloGh	0
 gateau	fNrJ	0
 gratify	fozrPeD	0
+he'd	gIc	0
 indoctrinated	HlcyiroPlGrWc	0
 inoculations	HlyivPjGqPlw	0
 intermittently	HlrUkHrPlrjX	0
@@ -35576,6 +35620,7 @@ starstruck	pryoproAi	0
 survivable	pUtDtPaPj	0
 symbolizing	pHkaPjDwWm	0
 terminates	rFkWlGrp	0
+they'll	dGj	0
 tracers	roGpUw	0
 transplanting	roOlpnjzlrWm	0
 unfailing	PleGjWm	0
@@ -36658,6 +36703,8 @@ turnovers	rFlJtUw	0
 underscore	AlcUpiBo	0
 unquestioned	PliuEpbPlc	0
 voiceless	tKpjPp	0
+weren't	uFPlr	0
+weren't	uFlr	1
 widens	uDcPlw	0
 winsome	uHlpPk	0
 abides	PaDcw	0
@@ -38117,6 +38164,7 @@ furtively	eFrWtjX	0
 godmothers	fyckAdUw	0
 hake	gGi	0
 harmlessly	gyokjPpjX	0
+hasn't	gzwPlr	0
 hoaxes	gJipWw	0
 homeopathy	gJkXYnzsX	0
 hydrants	gDcoPlrp	0
@@ -38984,6 +39032,8 @@ impounding	HknClcWm	0
 insoluble	HlpyjvPaPj	0
 interfaith	HlrUeGs	0
 intoxicates	HlryipPiGrp	0
+it'll	HrPj	0
+it'll	Hrj	1
 junked	hAmir	0
 legitimized	jWhHrPkDwc	0
 lettered	jErUc	0
@@ -39051,6 +39101,7 @@ defamatory	cWezkPrBoX	0
 deride	cWoDc	0
 doodad	cMczc	0
 embellishing	TkaEjWqWm	0
+everyone's	EtoXuAlw	0
 festered	eEprUc	0
 flurries	ejFXw	0
 foreclosing	eQoijJwWm	0
@@ -39688,6 +39739,7 @@ sweetening	puIrPlWm	0
 sweetening	puIrlWm	1
 teaspoonful	rIpnMlePj	0
 teem	rIk	0
+they've	dGt	0
 trustworthiness	roApruFdXlPp	0
 unclassified	PlijzpWeDc	0
 unneeded	PllIcWc	0
@@ -39734,6 +39786,8 @@ grist	foHpr	0
 grudgingly	foAhWmjX	0
 grudgingly	foAhWmfjX	1
 gynecologists	fDlPiyjPhPprp	0
+hadn't	gzcPlr	0
+hadn't	gzcPl	1
 handsaw	gzlcpB	0
 hotelier	gYrEjvU	0
 incinerating	HlpHlUGrWm	0
@@ -41570,6 +41624,8 @@ unverified	PltEoWeDc	0
 vibrancy	tDaoPlpX	0
 vocations	tYiGqPlw	0
 wangler	uzmfjU	0
+whatever's	uArEtUw	0
+whatever's	guArEtUw	1
 wistfully	uHprePjX	0
 abstentions	PaprElbPlw	0
 abstentions	OaprElbPlw	1
@@ -41887,6 +41943,8 @@ mummify	kAkPeD	0
 mused	kvMwc	0
 nationhood	lGqPlgLc	0
 newspeak	lMpnIi	0
+nobody's	lJaycIw	0
+nobody's	lJaPcXw	1
 opts	ynrp	0
 orientations	BoXTlrGqPlw	0
 outwitting	CruHrWm	0
@@ -42501,6 +42559,7 @@ effluent	Eej1Plr	0
 electromagnets	HjEiroYkzflPrp	0
 enlivened	TljDtPlc	0
 epitomize	WnHrPkDw	0
+everybody's	EtoXaycXw	0
 extender	EiprElcU	0
 extolling	WiprJjWm	0
 extroverted	EiproPtFrWc	0
@@ -42848,6 +42907,8 @@ unionism	vMlvPlHwPk	0
 unlabeled	PljGaPjc	0
 unreasoning	PloIwlWm	0
 unseated	PlpIrWc	0
+when's	uElw	0
+when's	guElw	1
 aardvarks	yoctyoip	0
 abounded	PaClcWc	0
 airdrop	EocoNn	0
@@ -43264,6 +43325,7 @@ stoplights	prynjDrp	0
 strategical	proPrIhWiPj	0
 switchboards	puHbaBocw	0
 technologists	rEilyjPhWprp	0
+they'd	dGc	0
 tithing	rDdWm	0
 trenchant	roElbPlr	0
 trumpeted	roAknPrWc	0
@@ -43550,6 +43612,7 @@ sharpies	qyonXw	0
 shimmered	qHkUc	0
 sidestepping	pDcprEnWm	0
 sleeved	pjItc	0
+somebody's	pAkaycXw	0
 sophisticate	pPeHprPiGr	0
 sophisticate	pPeHprPiPr	1
 spillover	pnHjJtU	0
@@ -43577,6 +43640,7 @@ amateurism	zkPbFWwPk	0
 anted	zlrWc	0
 anted	zlrXc	1
 antipersonnel	zlrXnUpPlEj	0
+anything's	ElXsHmw	0
 approximating	PnoyipWkGrWm	0
 arrowroot	EoYoMr	0
 assayer	OpGU	0
@@ -44449,6 +44513,7 @@ alumna	PjAklP	0
 amaranth	zkUzls	0
 ambled	zkaPjc	0
 anglophile	zlfjPeDj	0
+anybody's	ElXaPcXw	0
 approximates	PnoyipPkPrp	0
 approximates	PnoyipPkGrp	1
 assemblymen	PpEkajXkWl	0
@@ -44724,6 +44789,7 @@ rues	oMw	0
 satirize	pzrUDw	0
 screed	pioIc	0
 shellacked	qEjzic	0
+should've	qLcPt	0
 sleepwear	pjInuEo	0
 smooths	pkMdw	0
 squabbled	piuyaPjc	0
@@ -44901,6 +44967,7 @@ whitetail	uDrrGj	0
 whitetail	guDrrGj	1
 whitetail	guDrGj	2
 womble	uykaPj	0
+would've	uLcPt	0
 wrights	oDrp	0
 ablest	GaPjpr	0
 ablest	GajPpr	1
@@ -44942,6 +45009,7 @@ committeeman	iPkHrXkPl	0
 compiler	iPknDjU	0
 continuances	iPlrHlv1PlpWw	0
 copywriters	iynXoDrUw	0
+could've	iLcPt	0
 covariance	iJtyoIPlp	0
 crappie	ioznI	0
 deification	cIPePiGqPl	0
@@ -45072,6 +45140,7 @@ aileron	GjUyl	0
 allured	PjLoc	0
 animist	zlPkPpr	0
 anthologies	OlsyjPhXw	0
+anyone's	ElXuAlw	0
 appalls	PnBjw	0
 barres	ayow	0
 biophysics	aDYeHpWip	0
@@ -45318,6 +45387,7 @@ herbalists	gFaPjPp	3
 homonyms	gBkPlWkw	0
 hookworm	gLiuUk	0
 hotbeds	gyraEcw	0
+how'd	gCc	0
 ideologues	DcXPjQfw	0
 impoverishment	HknytoWqkPlr	0
 indentures	HlcElbUw	0
@@ -45895,6 +45965,7 @@ misquoting	kWpiuJrWm	0
 monorails	kylUGjw	0
 muffles	kAePjw	0
 mummer	kAkU	0
+mustn't	kApPlr	0
 nabobs	lzaNaw	0
 nonconformity	lyliPleBokPrX	0
 northeasterly	lBosIprUjX	0
@@ -45974,6 +46045,8 @@ usernames	vMwUlGkw	0
 usurps	vMpFnp	0
 varietals	tUDPrPjw	0
 verandas	tUzlcPw	0
+what're	uArU	0
+what're	guArU	1
 windchill	uHlcbHj	0
 absorbency	PawBoaPlpX	0
 adapters	PcznrUw	0
@@ -46703,6 +46776,8 @@ verbalizing	tFaPjDwWm	0
 vies	tDw	0
 voluble	tyjvPaPj	0
 wannabees	uylPaIw	0
+what'd	uArWc	0
+what'd	guArWc	1
 whiplashes	uHnjzqPw	0
 whiplashes	guHnjzqPw	1
 whodunits	g1cAlWrp	0
@@ -47103,6 +47178,8 @@ technophobe	rEilYeJa	0
 theatergoers	sIrUfYUw	0
 theatergoers	sIWrUfYUw	1
 therapeutics	sEoPnvMrWip	0
+there'll	dEoPj	0
+there're	dEoU	0
 tourneys	rMolXw	0
 uncoil	AliKj	0
 underplayed	AlcUnjGc	0
@@ -47230,6 +47307,7 @@ interventionists	HlrUtElqPlWprp	0
 intoning	HlrJlWm	0
 irrelevancy	HoEjPtPlpX	0
 issuer	Hq1U	0
+it'd	HrPc	0
 judicially	h1cHqPjX	0
 junipers	hMlWnUw	0
 kilobyte	iHjYaDr	0
@@ -47412,6 +47490,7 @@ hewer	gvMU	0
 hiccoughs	gHiPnp	0
 highboy	gDaK	0
 hornblende	gBolajElc	0
+how're	gCU	0
 ideologists	DcXyjPhWprp	0
 inflected	HlejEirPc	0
 instrumentalists	HlproPkElrPjWprp	0
@@ -47645,6 +47724,8 @@ mitotic	kDrBrWi	0
 muddleheaded	kAcPjgEcPc	0
 muddleheaded	kAcPjgEcWc	1
 mukluk	kAijPi	0
+must've	kAprWt	0
+needn't	lIcPlr	0
 niobium	lDJaXPk	0
 nonpolitical	lylnPjHrWiPj	0
 nonrenewable	lNloXlMPaPj	0
@@ -47695,6 +47776,7 @@ stringency	proHlhPlpX	0
 suffuses	pPevMwWw	0
 televangelists	rEjPtzlhPjPprp	0
 theism	sIWwPk	0
+there'd	dEoc	0
 toggling	ryfjWm	0
 toolbar	rMjayo	0
 transpacific	rozlpnPpHeWi	0
@@ -47707,8 +47789,11 @@ underwrites	AlcUoDrp	0
 unrelieved	AloXjItc	0
 vagary	tGfUX	0
 wallboard	uBjaBoc	0
+where'd	uEoc	0
+where'd	guEoc	1
 whipsaw	uHnpB	0
 whipsaw	guHnpB	1
+who'd	gMc	0
 winders	uHlcUw	0
 winders	uDlcUw	1
 winterize	uHlrUDw	0

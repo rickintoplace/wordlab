@@ -8,9 +8,9 @@
 // ergeben. Mit steigender Toleranz dürfen dabei einzelne Laute verrutschen —
 // die Kosten dafür kommen aus confusion.js.
 
-import { looseCode, expand, toIPA, isStressed } from './phonemes.js';
+import { looseCode, expand, toIPA, isStressed, isVowel, encode } from './phonemes.js';
 import { NEIGHBOURS, ELIDABLE, contextFactor, elisionFactor,
-  clusterTwins, CLUSTER_VOICING, cost } from './confusion.js';
+  clusterTwins, CLUSTER_VOICING, cost, voicingTwin, geminateCost, GEMINATE } from './confusion.js';
 
 
 const MAX_WORD = 16;      // längste betrachtete Lautfolge eines Wortes
@@ -29,8 +29,32 @@ export function buildPhraseIndex(index) {
 }
 
 /**
+ * Schwache Formen der Funktionswörter. Das Wörterbuch nennt zuerst die
+ * Zitierform — "an" als /æn/, "for" als /fɔɹ/ —, im Satz spricht die aber
+ * niemand: da heißt es /ən/ und /fɚ/. Ohne diese Tabelle ist "an ice cold
+ * shower" nicht lautgleich mit "a nice cold shower", obwohl es genau das ist.
+ * Nur Artikel und Präpositionen: bei Hilfsverben wie "can" lebt manches Oronym
+ * gerade von der vollen Form ("the good can decay" / "the good candy came").
+ */
+const WEAK_FORMS = new Map(Object.entries({
+  a: 'AH0', an: 'AH0 N', and: 'AH0 N D', as: 'AH0 Z', at: 'AH0 T',
+  for: 'F ER0', from: 'F R AH0 M', of: 'AH0 V', than: 'DH AH0 N',
+  the: 'DH AH0', to: 'T AH0',
+}).map(([w, arpa]) => [w, encode(arpa.split(' '))]));
+
+/**
+ * Aussprache eines Wortes, in einer Phrase mit den schwachen Formen.
+ * @returns {string | undefined}
+ */
+export function pronounce(index, word, inPhrase) {
+  if (inPhrase && WEAK_FORMS.has(word)) return WEAK_FORMS.get(word);
+  return index.byWord.get(word)?.[0]?.code;
+}
+
+/**
  * Zerlegt einen Text in Wörter mit Aussprache.
- * @param {(w: string) => string | undefined} lookup liefert die Lautfolge
+ * @param {(w: string, inPhrase: boolean) => string | undefined} lookup
+ *   liefert die Lautfolge; `inPhrase` heißt, das Wort steht nicht allein
  */
 export function readPhrase(text, lookup) {
   const tokens = (text.toLowerCase().match(/[a-z][a-z']*/g) ?? [])
@@ -39,7 +63,7 @@ export function readPhrase(text, lookup) {
   const words = [];
   const unknown = [];
   for (const token of tokens) {
-    const code = lookup(token);
+    const code = lookup(token, tokens.length > 1);
     if (code) words.push({ word: token, code, loose: looseCode(code) });
     else unknown.push(token);
   }
@@ -59,11 +83,17 @@ export const DEFAULTS = {
   wordPenalty: 1.2,    // bremst das Zerbröseln in lauter Kurzwörter
   cutBonus: 2.0,       // belohnt jede Wortgrenze an neuer Stelle
   carryPenalty: 1.0,   // je Laut, den ein unverändert übernommenes Wort abdeckt
+  spanPenalty: 0.5,    // Anteil davon für ein anderes Wort an derselben Stelle
   perPattern: 2,       // höchstens so viele Lesarten je Schnittmuster
   exactBonus: 4.0,     // wirklich lautgleich zu sein ist das Versprechen der Seite
+  voicingBonus: 4.0,   // und gleich danach: nur die Stimmhaftigkeit ist anders
   stressPenalty: 1.8,  // je Silbe, die anders betont werden müsste
   fillerPenalty: 2.6,  // je Interjektion in der Lesart
   headStart: 3,        // so viele beste Treffer stehen vor dem Rundlauf
+  pairWeight: 0.85,    // Gewicht der Wortpaare (nur mit geladenen Bigrammen)
+  pairClamp: 6,        // weiter reicht ein einzelnes Paar nicht
+  pairFloor: 0,        // und so weit nach unten: Ungewöhnliches wird nicht bestraft
+  pairSeen: 1.5,       // Zuschlag für ein Paar, das überhaupt vorkommt
   beam: 0,             // Pfade je Position; 0 = nach Kettenlänge gestaffelt
   limit: 12,
 };
@@ -91,7 +121,7 @@ const TOLERANCE = [
 const FILLERS = new Set(`
 ah aha aw aww duh eh er erm ew gee ha hah haha heh hey hm hmm hoo huh ick meh
 mhm mm mmm nah oh oho ooh oops ow phew psst sh shh tsk ugh uh uhh um umm whoa
-wow yay yeah yep yikes yup
+whew wow yay yeah yep yikes yup
 `.trim().split(/\s+/));
 
 const CARRY_REF = 12;      // Bezugslänge für den Aufschlag auf übernommene Wörter
@@ -134,6 +164,9 @@ function candidates(phones, i, j, lex, tol, ok) {
       const drop = base * elisionFactor(prev, next, t[p]);
       if (drop <= tol.maxStep) add(t.slice(0, p) + t.slice(p + 1), drop, i + p);
     }
+    // ein Doppelkonsonant als einfacher gehört
+    const merge = Math.min(geminateCost(t[p], prev) ?? 9, geminateCost(t[p], next) ?? 9);
+    if (merge <= tol.maxStep) add(t.slice(0, p) + t.slice(p + 1), merge, i + p);
   }
   // Ein Geräuschlautcluster kippt in der Stimmhaftigkeit als Ganzes: /zd/ als
   // /st/ zu hören ist ein Hörfehler und nicht zwei. Das Paar wird deshalb
@@ -154,6 +187,14 @@ function candidates(phones, i, j, lex, tol, ok) {
   for (let p = 0; p <= t.length; p++) {
     for (const [ch, c] of ELIDABLE) {
       if (c <= tol.maxStep) add(t.slice(0, p) + ch + t.slice(p), c, i + Math.min(p, t.length - 1));
+    }
+    // und ein einfacher Konsonant als doppelter: das /m/ in "some others"
+    // gehört dann zu beiden Wörtern.
+    // gehört. Nur am Wortrand: im Wortinneren kennt das Englische keine
+    // Doppelkonsonanten.
+    const edge = p === 0 ? phones[i - 1] : p === t.length ? phones[j] : undefined;
+    if (GEMINATE <= tol.maxStep && edge !== undefined && !isVowel(edge)) {
+      add(t.slice(0, p) + edge + t.slice(p), GEMINATE, i + Math.min(p, t.length - 1));
     }
   }
 
@@ -182,6 +223,82 @@ function candidates(phones, i, j, lex, tol, ok) {
     }
   }
   return [...out.values()];
+}
+
+/**
+ * Wortpaare aus gesprochener Sprache (data/bigrams.txt, gezählt in 40 Mio.
+ * Untertitelzeilen). Lautlich sind "wreck a nice beach" und "reckon eyes beach"
+ * gleich weit von "recognize speech" entfernt — aber nur das eine sagt jemand.
+ * Das Format steht in build/build-bigrams.mjs.
+ */
+export function readBigrams(text, index) {
+  const lines = text.split('\n');
+  const [total, min] = lines[0].split(' ').map(Number);
+  const unigram = Float64Array.from(lines[1].split(' '), s => parseInt(s, 36));
+  const rows = lines.slice(2, 2 + unigram.length + 1);
+  const offsets = new Uint32Array(rows.length + 1);
+  let pairs = 0;
+  rows.forEach((row, r) => {
+    for (let k = 0; k < row.length; k++) if (row.charCodeAt(k) >= 65 && row.charCodeAt(k) <= 90) pairs++;
+    offsets[r + 1] = pairs;
+  });
+  const next = new Uint16Array(pairs);
+  const logCount = new Uint8Array(pairs);
+  let at = 0;
+  for (const row of rows) {
+    let id = 0, digits = '';
+    for (const ch of row) {
+      const code = ch.charCodeAt(0);
+      if (code >= 65 && code <= 90) {
+        id += parseInt(digits, 36);
+        next[at] = id;
+        logCount[at++] = code - 65;
+        digits = '';
+      } else digits += ch;
+    }
+  }
+  // Wort-IDs sind die Reihenfolge in words.txt — dieselbe wie in index.byWord.
+  const ids = new Map();
+  for (const word of index.byWord.keys()) ids.set(word, ids.size);
+  for (const e of index.entries) e.wid = ids.get(e.word);
+  let sum = 0;
+  for (const n of unigram) sum += n;
+  return { total, min, unigram, sum, offsets, next, logCount };
+}
+
+const SMOOTHING = 100;     // so viele Pseudo-Vorkommen stehen hinter jeder Schätzung
+
+/**
+ * Wie viel wahrscheinlicher `id` nach `prev` ist als irgendwo sonst — die
+ * punktweise Transinformation, geglättet: bei seltenen Vorgängern weiß man
+ * wenig und bleibt nahe 0. `prev` = -1 heißt Satzanfang.
+ *
+ * Dazu kommt `seenBonus`, wenn das Paar überhaupt belegt ist: "wreck a" ist
+ * seltener, als die Einzelwörter erwarten lassen, aber es kommt vor — "reckon
+ * eyes" nicht.
+ *
+ * Paare unter der Schwelle fehlen in der Datei. Ob eins fehlt, weil es nie
+ * vorkommt, oder weil beide Wörter zu selten sind, um es zu erwarten, sagt die
+ * erwartete Anzahl: liegt sie unter der Schwelle, ist das Fehlen kein Beleg.
+ */
+export function association(bg, prev, id, seenBonus = 0) {
+  if (id === undefined || prev === undefined) return 0;
+  let lo = bg.offsets[prev + 1], hi = bg.offsets[prev + 2];
+  let count = -1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const v = bg.next[mid];
+    if (v === id) { count = 2 ** bg.logCount[mid]; break; }
+    if (v < id) lo = mid + 1; else hi = mid;
+  }
+  const before = prev < 0 ? bg.total : bg.unigram[prev];
+  const p = (bg.unigram[id] + 1) / bg.sum;
+  const seen = count >= 0;
+  if (!seen) {
+    const expected = before * p;
+    count = expected < bg.min ? expected : bg.min / 2;
+  }
+  return Math.log((count + SMOOTHING * p) / (before + SMOOTHING)) - Math.log(p) + (seen ? seenBonus : 0);
 }
 
 /**
@@ -256,12 +373,20 @@ export function findOronyms(phrase, lex, opts = {}) {
   for (const w of phrase.words) original.add(at += w.loose.length);
 
   const sourceWords = new Set(phrase.words.map(w => w.word));
+  // Wortspannen der Vorlage — bei einem einzelnen Wort ist das Ersetzen an
+  // derselben Stelle ("heard" -> "hurt") gerade der Treffer.
+  const sourceSpans = new Set();
+  if (phrase.words.length > 1) {
+    let from = 0;
+    for (const w of phrase.words) { sourceSpans.add(from * 4096 + from + w.loose.length); from += w.loose.length; }
+  }
   // Je länger die Kette, desto mehr Pfade konkurrieren um dieselbe Position —
   // mit fester Breite fällt bei langen Sätzen genau der interessante Pfad
   // heraus, bevor er sich auszahlt ("the stuff he knows" überlebt sonst nicht
   // bis ans Ende).
   const beam = o.beam || Math.min(800, Math.max(60, n * 30));
 
+  const bigrams = lex.bigrams ?? null;
   const beams = Array.from({ length: n + 1 }, () => []);
   beams[0] = [{ score: 0, cost: 0, shifts: 0, count: 0, entry: null, prev: null, at: 0 }];
 
@@ -285,7 +410,12 @@ export function findOronyms(phrase, lex, opts = {}) {
         // Auf die Kettenlänge bezogen: sonst wächst der Aufschlag mit der
         // Satzlänge ins Absurde und zwingt lange Eingaben dazu, auch den Teil
         // umzudeuten, der offensichtlich stehen bleiben soll.
-        const carry = (sourceWords.has(entry.word) ? o.carryPenalty * (j - i) * Math.min(CARRY_REF / n, 1) : 0)
+        // Ein anderes Wort genau an der Stelle eines Vorlagenworts ("case"
+        // für "kiss") verschiebt keine Grenze: halb so schlimm wie ein
+        // übernommenes Wort, aber kein Grund, das Original zu verdrängen.
+        const kept = sourceWords.has(entry.word) ? 1
+          : sourceSpans.has(i * 4096 + j) ? o.spanPenalty : 0;
+        const carry = o.carryPenalty * kept * (j - i) * Math.min(CARRY_REF / n, 1)
           + (FILLERS.has(entry.word) ? o.fillerPenalty : 0);
         let shifts = 0;
         const spelled = expand(entry.code);
@@ -294,13 +424,18 @@ export function findOronyms(phrase, lex, opts = {}) {
             if (isStressed(spelled[k]) !== isStressed(stressed[i + k])) shifts++;
           }
         }
+        const own = o.lmWeight * logp(entry, o.lmFloor)
+          - tol.lambda * cost * cost - o.wordPenalty - carry
+          - o.stressPenalty * shifts + bonus;
         for (const state of beams[i]) {
           const total = state.cost + cost;
           if (total > tol.budget) continue;
+          const pair = bigrams && o.pairWeight
+            ? o.pairWeight * Math.max(-o.pairFloor, Math.min(o.pairClamp,
+              association(bigrams, state.entry ? state.entry.wid : -1, entry.wid, o.pairSeen)))
+            : 0;
           beams[j].push({
-            score: state.score + o.lmWeight * logp(entry, o.lmFloor)
-              - tol.lambda * cost * cost - o.wordPenalty - carry
-              - o.stressPenalty * shifts + bonus,
+            score: state.score + own + pair,
             cost: total,
             shifts: state.shifts + shifts,
             count: state.count + 1,
@@ -333,6 +468,17 @@ export function findOronyms(phrase, lex, opts = {}) {
     const resegmented = cuts.some(c => !original.has(c));
     const rude = parts.some(p => p.entry.vulgar);
 
+    // Lautgleich ist das Beste, was eine Lesart sein kann; gleich danach kommt
+    // eine, in der sich kein Laut anders anhört als sein eigener Stimmzwilling.
+    // /zd/ gegen /st/ ist derselbe Mund in derselben Stellung, nur der Kehlkopf
+    // schweigt — das sind die besten Verhörer, die keine Homophone mehr sind.
+    const heard = parts.map(p => looseCode(p.entry.code)).join('');
+    const voicingOnly = state.cost > 0 && heard.length === phones.length
+      && [...heard].every((ch, k) => ch === phones[k] || voicingTwin(phones[k]) === ch);
+    const tier = state.shifts > 0 ? 0
+      : state.cost === 0 ? o.exactBonus
+      : voicingOnly ? o.voicingBonus : 0;
+
     results.push({
       text,
       words: parts.map(p => ({
@@ -362,10 +508,8 @@ export function findOronyms(phrase, lex, opts = {}) {
       // betonungsfrei, damit sich Betonungsverschiebungen finden lassen — aber
       // "thus" für ein unbetontes "the" ist eben nicht dasselbe Geräusch, und
       // ohne diese Bedingung kassiert es trotzdem den vollen Bonus.
-      score: state.score + (state.cost === 0 && state.shifts === 0 ? o.exactBonus : 0)
-        + (o.vulgarity > 1 && rude ? 4 : 0),
-      rank: state.score + (state.cost === 0 && state.shifts === 0 ? o.exactBonus : 0)
-        + (o.vulgarity > 1 && rude ? 4 : 0),
+      score: state.score + tier + (o.vulgarity > 1 && rude ? 4 : 0),
+      rank: state.score + tier + (o.vulgarity > 1 && rude ? 4 : 0),
     });
   }
 
