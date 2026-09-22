@@ -4,6 +4,7 @@ import { toIPA } from './phonemes.js';
 import { stackSlider, faceSlider, noiseSlider, curveSlider } from './sliders.js';
 import { hasApi, voicesReady, say, stopSpeaking, mountVoiceControls } from './speak.js';
 import { icon } from './icons.js';
+import { mountSettings } from './settings.js';
 
 const $ = sel => document.querySelector(sel);
 
@@ -71,6 +72,14 @@ setTimeout(() => document.body.classList.remove('intro'), 1600);
 
 const VOCABULARY = [3000, 8000, 20000, 43500];
 
+// Jede Reglerbewegung sucht neu und schreibt die Kurzfassung am Schalter um.
+// `settings` entsteht erst weiter unten, wenn alle Regler da sind.
+let settings = null;
+function changed() {
+  settings?.refresh();
+  run();
+}
+
 const tolerance = noiseSlider($('#tolerance'), {
   title: 'How hard you are listening',
   labels: ['Exact', 'Faint', 'Noisy', 'Loud'],
@@ -83,7 +92,7 @@ const tolerance = noiseSlider($('#tolerance'), {
   // "Noisy": erst hier ist "recognize speech" / "wreck a nice beach" in
   // Reichweite, und gegen die Messliste schneidet die Stufe am besten ab.
   value: 2,
-  onChange: () => run(),
+  onChange: changed,
 });
 
 const vocabulary = stackSlider($('#vocabulary'), {
@@ -93,7 +102,7 @@ const vocabulary = stackSlider($('#vocabulary'), {
     ? 'every word in the dictionary'
     : `the ${n.toLocaleString('en')} most frequent words`),
   value: 2,
-  onChange: () => run(),
+  onChange: changed,
 });
 
 // Wie tief in den Wortschatz darf die Bewertung greifen? Gewicht und Sockel
@@ -115,7 +124,7 @@ const taste = curveSlider($('#taste'), {
     'the long tail is fair game',
   ],
   value: 1,
-  onChange: () => run(),
+  onChange: changed,
 });
 
 const rudeness = faceSlider($('#rudeness'), {
@@ -123,7 +132,7 @@ const rudeness = faceSlider($('#rudeness'), {
   labels: ['Never', 'Allowed', 'Favoured'],
   statuses: ['rude words are left out', 'taken as they come', 'the filthy reading wins'],
   value: 1,
-  onChange: () => run(),
+  onChange: changed,
 });
 
 /* -------------------------------------------------------------------- Daten */
@@ -474,6 +483,13 @@ $('.examples').replaceChildren(...shown6.map(text => {
   return chip;
 }));
 
+/* --------------------------------------------------------- Einstellungen */
+
+const TOLERANCE_LABELS = ['Exact', 'Faint', 'Noisy', 'Loud'];
+const VOCABULARY_LABELS = ['3k', '8k', '20k', 'All'];
+const TASTE_LABELS = ['Plain', 'Normal', 'Curious', 'Obscure'];
+const RUDE_LABELS = ['No rude words', 'Rude allowed', 'Rude favoured'];
+
 /* --------------------------------------------------------------- Adresse */
 
 // Die Phrase und alle Regler, die nicht auf der Voreinstellung stehen, landen
@@ -487,6 +503,16 @@ for (const [key, slider] of Object.entries(SETTINGS)) {
   const value = Number(params.get(key));
   if (params.has(key) && Number.isInteger(value)) slider.set(value);
 }
+
+settings = mountSettings({
+  key: 'misheard',
+  summary: () => [
+    `${TOLERANCE_LABELS[tolerance.get()]} hearing`,
+    `${VOCABULARY_LABELS[vocabulary.get()]} words`,
+    `${TASTE_LABELS[taste.get()]} taste`,
+    RUDE_LABELS[rudeness.get()],
+  ],
+});
 
 function remember(text) {
   const next = new URLSearchParams({ q: text });
@@ -522,7 +548,7 @@ const ghost = (() => {
   };
   const next = () => step(order[k % order.length], 0, 1);
   timer = setTimeout(next, 1400);
-  input.addEventListener('focus', () => { if (!input.value) input.placeholder = 'type a phrase'; });
+  input.addEventListener('focus', () => { if (!input.value) input.placeholder = ''; });
   return api;
 })();
 

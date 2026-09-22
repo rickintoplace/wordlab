@@ -77,54 +77,65 @@
          Wirt, und das wären sonst die Knöpfe darüber. -->
     <div class="playback"></div>
 
-    <section class="options">
-      <div class="cards">
-        <div id="vocabulary"></div>
-        <div id="rudeness"></div>
+    <button type="button" class="settings-toggle" aria-expanded="false" aria-controls="settings">
+      <span class="settings-icon" aria-hidden="true"></span>
+      <span class="settings-label">Settings</span>
+      <span class="settings-summary"></span>
+      <span class="chevron" aria-hidden="true"></span>
+    </button>
+
+    <div id="settings" class="settings-panel">
+      <div class="settings-inner">
+        <section class="options">
+          <div class="cards">
+            <div id="vocabulary"></div>
+            <div id="rudeness"></div>
+          </div>
+
+          <label class="phrase-toggle">
+            <input type="checkbox" id="phrases" checked>
+            <span>Only pairs people actually say <small>(both lines found in 40 million lines of film subtitles)</small></span>
+          </label>
+
+          <div class="basic">
+            <label class="field">
+              <span class="field-label">Start from a word</span>
+              <input id="seed" type="text" placeholder="e.g. Rick" autocomplete="off" spellcheck="false">
+              <small id="seed-hint">Leave empty for a random one.</small>
+            </label>
+
+            <div class="field free-only">
+              <span class="field-label">Syllables</span>
+              <div class="plain-range"><input id="syllables" type="range" min="1" max="5" step="1" value="3"></div>
+              <small id="syllables-value"></small>
+            </div>
+          </div>
+
+          <button type="button" id="more-button" class="free-only" aria-expanded="false" aria-controls="more">
+            <span class="chevron"></span>Show more
+          </button>
+
+          <div id="more" class="advanced free-only">
+            <div class="field">
+              <span class="field-label">Length of the first pair</span>
+              <div class="range" data-target="pair1"></div>
+              <small id="pair1-value"></small>
+            </div>
+
+            <div class="field">
+              <span class="field-label">Length of the second pair</span>
+              <div class="range" data-target="pair2"></div>
+              <small id="pair2-value"></small>
+            </div>
+
+            <div class="field checks">
+              <label><input type="checkbox" id="vowel-onset" checked> Allow words starting with a vowel <small>(icicle / bicycle)</small></label>
+              <label><input type="checkbox" id="variants"> Allow secondary pronunciations <small>(read as /rɛd/)</small></label>
+            </div>
+          </div>
+        </section>
       </div>
-
-      <label class="phrase-toggle">
-        <input type="checkbox" id="phrases" checked>
-        <span>Only pairs people actually say <small>(both lines found in 40 million lines of film subtitles)</small></span>
-      </label>
-
-      <div class="basic">
-        <label class="field">
-          <span class="field-label">Start from a word</span>
-          <input id="seed" type="text" placeholder="e.g. Rick" autocomplete="off" spellcheck="false">
-          <small id="seed-hint">Leave empty for a random one.</small>
-        </label>
-
-        <div class="field free-only">
-          <span class="field-label">Syllables</span>
-          <div class="plain-range"><input id="syllables" type="range" min="1" max="5" step="1" value="3"></div>
-          <small id="syllables-value"></small>
-        </div>
-      </div>
-
-      <button type="button" id="more-button" class="free-only" aria-expanded="false" aria-controls="more">
-        <span class="chevron"></span>Show more
-      </button>
-
-      <div id="more" class="advanced free-only">
-        <div class="field">
-          <span class="field-label">Length of the first pair</span>
-          <div class="range" data-target="pair1"></div>
-          <small id="pair1-value"></small>
-        </div>
-
-        <div class="field">
-          <span class="field-label">Length of the second pair</span>
-          <div class="range" data-target="pair2"></div>
-          <small id="pair2-value"></small>
-        </div>
-
-        <div class="field checks">
-          <label><input type="checkbox" id="vowel-onset" checked> Allow words starting with a vowel <small>(icicle / bicycle)</small></label>
-          <label><input type="checkbox" id="variants"> Allow secondary pronunciations <small>(read as /rɛd/)</small></label>
-        </div>
-      </div>
-    </section>
+    </div>
 
     <footer class="credits">
       Pronunciations from the <a href="https://github.com/cmusphinx/cmudict">CMU Pronouncing Dictionary</a>,

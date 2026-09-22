@@ -136,13 +136,17 @@ function candidates(phones, i, j, lex, tol, ok) {
   const t = phones.slice(i, j);
   const out = new Map();
   // `at` ist die Stelle in der Gesamtkette, an der etwas anders gehört wurde.
-  const add = (key, cost, at = -1) => {
+  // `needs` hält fest, was die Nachbarwörter hören müssen, damit der Ersatz
+  // aufgeht: ein Laut, der mit dem Nachbarn verschmilzt oder geteilt wird,
+  // muss dort auch wirklich so ankommen (siehe findOronyms).
+  const add = (key, cost, at = -1, needs = null) => {
     const bucket = lex.byLoose.get(key);
     if (!bucket) return;
+    const tag = needs ? `|${needs.before ?? ''}|${needs.after ?? ''}` : '';
     for (const e of bucket) {
       if (!ok(e)) continue;
-      const seen = out.get(e.word);
-      if (!seen || cost < seen.cost) out.set(e.word, { entry: e, cost, at });
+      const seen = out.get(e.word + tag);
+      if (!seen || cost < seen.cost) out.set(e.word + tag, { entry: e, cost, at, needs });
     }
   };
 
@@ -164,9 +168,15 @@ function candidates(phones, i, j, lex, tol, ok) {
       const drop = base * elisionFactor(prev, next, t[p]);
       if (drop <= tol.maxStep) add(t.slice(0, p) + t.slice(p + 1), drop, i + p);
     }
-    // ein Doppelkonsonant als einfacher gehört
-    const merge = Math.min(geminateCost(t[p], prev) ?? 9, geminateCost(t[p], next) ?? 9);
-    if (merge <= tol.maxStep) add(t.slice(0, p) + t.slice(p + 1), merge, i + p);
+    // ein Doppelkonsonant als einfacher gehört. Steht der Partner im
+    // Nachbarwort, muss der ihn auch behalten.
+    for (const [partner, needs] of [
+      [prev, p === 0 ? { before: prev } : null],
+      [next, p === t.length - 1 ? { after: next } : null],
+    ]) {
+      const merge = geminateCost(t[p], partner);
+      if (merge !== undefined && merge <= tol.maxStep) add(t.slice(0, p) + t.slice(p + 1), merge, i + p, needs);
+    }
   }
   // Ein Geräuschlautcluster kippt in der Stimmhaftigkeit als Ganzes: /zd/ als
   // /st/ zu hören ist ein Hörfehler und nicht zwei. Das Paar wird deshalb
@@ -189,12 +199,14 @@ function candidates(phones, i, j, lex, tol, ok) {
       if (c <= tol.maxStep) add(t.slice(0, p) + ch + t.slice(p), c, i + Math.min(p, t.length - 1));
     }
     // und ein einfacher Konsonant als doppelter: das /m/ in "some others"
-    // gehört dann zu beiden Wörtern.
-    // gehört. Nur am Wortrand: im Wortinneren kennt das Englische keine
-    // Doppelkonsonanten.
+    // gehört dann zu beiden Wörtern. Nur am Wortrand – im Wortinneren kennt
+    // das Englische keine Doppelkonsonanten –, und nur, wenn das Nachbarwort
+    // den Laut unverändert behält. Sonst würde aus einem /ʃ/ zugleich /s/ und
+    // /ʃ/ ("that shooting" -> "that's shooting").
     const edge = p === 0 ? phones[i - 1] : p === t.length ? phones[j] : undefined;
     if (GEMINATE <= tol.maxStep && edge !== undefined && !isVowel(edge)) {
-      add(t.slice(0, p) + edge + t.slice(p), GEMINATE, i + Math.min(p, t.length - 1));
+      add(t.slice(0, p) + edge + t.slice(p), GEMINATE, i + Math.min(p, t.length - 1),
+        p === 0 ? { before: edge } : { after: edge });
     }
   }
 
@@ -402,7 +414,8 @@ export function findOronyms(phrase, lex, opts = {}) {
       // während der Suche zählen, sonst wirft der Strahl die tief umgeschnittenen
       // Pfade weg, bevor sie sich auszahlen können.
       const bonus = original.has(j) ? 0 : o.cutBonus;
-      for (const { entry, cost, at } of hits) {
+      for (const { entry, cost, at, needs } of hits) {
+        const heardCode = looseCode(entry.code);
         // Ein Wort, das schon in der Vorlage stand, ist kein Verhörer.
         // Ein übernommenes Wort ist kein Verhörer — und je mehr von der Phrase
         // es abdeckt, desto weniger ist überhaupt passiert. "us punk myself"
@@ -430,6 +443,9 @@ export function findOronyms(phrase, lex, opts = {}) {
         for (const state of beams[i]) {
           const total = state.cost + cost;
           if (total > tol.budget) continue;
+          // Geteilte oder verschmolzene Laute müssen beim Nachbarn ankommen.
+          if (needs?.before !== undefined && state.last !== needs.before) continue;
+          if (state.after !== undefined && heardCode[0] !== state.after) continue;
           const pair = bigrams && o.pairWeight
             ? o.pairWeight * Math.max(-o.pairFloor, Math.min(o.pairClamp,
               association(bigrams, state.entry ? state.entry.wid : -1, entry.wid, o.pairSeen)))
@@ -441,6 +457,8 @@ export function findOronyms(phrase, lex, opts = {}) {
             count: state.count + 1,
             step: cost,
             changedAt: at,
+            last: heardCode[heardCode.length - 1],
+            after: needs?.after,
             entry, prev: state, at: j,
           });
         }
@@ -453,6 +471,7 @@ export function findOronyms(phrase, lex, opts = {}) {
   const results = [];
 
   for (const state of beams[n].sort((a, b) => b.score - a.score)) {
+    if (state.after !== undefined) continue;     // Forderung ans nächste Wort, aber keins mehr da
     const parts = collect(state);
     const text = parts.map(p => p.entry.word).join(' ');
     if (seen.has(text)) continue;

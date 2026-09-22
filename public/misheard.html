@@ -82,14 +82,25 @@
     <ol id="readings" class="readings"></ol>
     <button id="more-readings" class="more-readings" type="button" hidden></button>
 
-    <section class="options">
-      <div class="cards">
-        <div id="tolerance"></div>
-        <div id="vocabulary"></div>
-        <div id="taste"></div>
-        <div id="rudeness"></div>
+    <button type="button" class="settings-toggle" aria-expanded="false" aria-controls="settings">
+      <span class="settings-icon" aria-hidden="true"></span>
+      <span class="settings-label">Settings</span>
+      <span class="settings-summary"></span>
+      <span class="chevron" aria-hidden="true"></span>
+    </button>
+
+    <div id="settings" class="settings-panel">
+      <div class="settings-inner">
+        <section class="options">
+          <div class="cards">
+            <div id="tolerance"></div>
+            <div id="vocabulary"></div>
+            <div id="taste"></div>
+            <div id="rudeness"></div>
+          </div>
+        </section>
       </div>
-    </section>
+    </div>
 
     <footer class="credits">
       Pronunciations from the <a href="https://github.com/cmusphinx/cmudict">CMU Pronouncing Dictionary</a>,

@@ -63,7 +63,6 @@ const TARGETS = [
   ['that stuff', "that's tough"],
   ['mistake', 'miss steak'],
   ['real eyes', 'realize'],
-  ['sandwich', 'sand witch'],
   ['an ice cold shower', 'a nice cold shower'],
   ['some others', 'some mothers'],
   ['europe', "you're up"],

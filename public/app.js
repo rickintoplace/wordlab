@@ -1,6 +1,7 @@
 import { buildIndex, generate, generatePhrase, fromLine, readPhrases, PAIR_DEFAULTS } from './engine.js';
 import { faceSlider, stackSlider } from './sliders.js';
 import { icon } from './icons.js';
+import { mountSettings } from './settings.js';
 import { voicesReady, say, sayAll, stopSpeaking, mountVoiceControls } from './speak.js';
 
 const $ = sel => document.querySelector(sel);
@@ -216,6 +217,7 @@ const vocabulary = stackSlider($('#vocabulary'), {
     ? 'every word in the dictionary'
     : `the ${n.toLocaleString('en')} most frequent words`),
   value: 2,
+  onChange: () => settings?.refresh(),
 });
 
 const rudeness = faceSlider($('#rudeness'), {
@@ -228,6 +230,7 @@ const rudeness = faceSlider($('#rudeness'), {
     'How to: Mandatory HR meeting',
   ],
   value: 0,
+  onChange: () => settings?.refresh(),
 });
 
 const pairRanges = {};
@@ -261,8 +264,27 @@ function currentOptions() {
 
 // Mit Phrasen zählen Längen und Silben nicht — die Regler treten zurück.
 const phrasesBox = $('#phrases');
-const syncMode = () => document.body.classList.toggle('phrase-mode', phrasesBox.checked);
+const syncMode = () => {
+  document.body.classList.toggle('phrase-mode', phrasesBox.checked);
+  settings?.refresh();
+};
 phrasesBox.addEventListener('change', syncMode);
+
+const VOCABULARY_LABELS = ['3k', '6k', '10k', '20k', 'All'];
+const RUDE_LABELS = ['Clean', 'Normal', 'Spicy', 'Filthy'];
+const settings = mountSettings({
+  key: 'spoonerize',
+  summary: () => {
+    const seed = $('#seed').value.trim();
+    return [
+      phrasesBox.checked ? 'Real pairs' : 'Any words',
+      `${VOCABULARY_LABELS[vocabulary.get()]} words`,
+      RUDE_LABELS[rudeness.get()],
+      ...(seed ? [`from “${seed}”`] : []),
+    ];
+  },
+});
+$('#seed').addEventListener('input', () => settings.refresh());
 syncMode();
 
 const moreButton = $('#more-button');

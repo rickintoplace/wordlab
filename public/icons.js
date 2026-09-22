@@ -22,6 +22,9 @@ const PATHS = {
   ],
   copy: ['M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'],
   'arrow-up': ['m5 12 7-7 7 7', 'M12 19V5'],
+  // Die letzten drei Pfade sind die Knöpfe; settings.js schiebt sie beim Überfahren.
+  'sliders-horizontal': ['M21 4h-7', 'M10 4H3', 'M21 12h-9', 'M8 12H3', 'M21 20h-5', 'M12 20H3',
+    'M14 2v4', 'M8 10v4', 'M16 18v4'],
   check: ['M20 6 9 17l-5-5'],
   'external-link': ['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'],
   'arrow-left': ['m12 19-7-7 7-7', 'M19 12H5'],

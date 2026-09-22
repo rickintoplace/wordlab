@@ -36,8 +36,8 @@ a few text files. There's no server, no language model and no tracking.
    40 million lines of film subtitles than it would by chance. Sound alone can't
    tell *wreck a nice beach* from *reckon eyes beach*. Word pairs can.
 
-The ranking is tuned against a list of 43 known oronyms and mondegreens
-(`npm run tune`): 39 appear in the top 12, 25 of them in first place. What still
+The ranking is tuned against a list of 42 known oronyms and mondegreens
+(`npm run tune`): 38 appear in the top 12, 25 of them in first place. What still
 fails: long sentences (the right reading gets lost among too many possible
 cuts), and proper names, because names are filtered out of the output
 vocabulary, so *euthanasia* can't become *youth in Asia*.
@@ -98,10 +98,9 @@ npm run tune                     # rank of each known oronym, lower total is bet
 npm run try -- 20                # 20 random spoonerisms
 npm run check                    # generator invariants
 npm run census -- --rude 4       # every spoonerism made of four rude words (there are 13)
+node tools/confusion-map.mjs     # which consonant Misheard hears as which, by position (12,000 phrases, ~3 min)
+node tools/post-figures.mjs      # data for the interactive figures in the blog posts
 ```
-
-Detailed development notes, in German, are in
-[docs/NOTES.de.md](docs/NOTES.de.md).
 
 ## Data and licenses
 

@@ -322,6 +322,112 @@ body.intro .title .letter {
 
 /* ================================================================ Optionen */
 
+/*
+ * Einstellungen: ein Schalter mit Kurzfassung, darunter die Karten zum
+ * Aufklappen (settings.js). Der Schalter lädt ein, ohne dem Hauptknopf die
+ * Schau zu stehlen: kein Farbring, nur Karte, Punkte in den vier Lautfarben und
+ * ein Symbol, dessen Regler beim Überfahren ein Stück wandern.
+ */
+.settings-toggle {
+  --settings-dot-0: var(--c-rime-1);
+  --settings-dot-1: var(--c-onset-2);
+  --settings-dot-2: var(--c-onset-1);
+  --settings-dot-3: var(--c-rime-2);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: .5rem .7rem;
+  max-width: 100%;
+  margin-top: .75rem;
+  padding: .55rem .9rem .55rem .6rem;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color .25s ease, transform .35s cubic-bezier(.34, 1.4, .64, 1), box-shadow .25s ease;
+}
+.settings-toggle:hover {
+  border-color: color-mix(in srgb, var(--fg) 28%, transparent);
+  transform: translateY(-1px);
+  box-shadow: var(--card-shadow);
+}
+.settings-toggle:active { transform: scale(.98); }
+.settings-toggle:focus-visible { outline: 2px solid var(--c-rime-1); outline-offset: 3px; }
+
+.settings-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+.settings-icon path { transition: transform .45s cubic-bezier(.34, 1.4, .64, 1); }
+.settings-toggle:hover .settings-icon path:nth-child(7) { transform: translateX(-4px); }
+.settings-toggle:hover .settings-icon path:nth-child(8) { transform: translateX(5px); }
+.settings-toggle:hover .settings-icon path:nth-child(9) { transform: translateX(-3px); }
+
+.settings-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.settings-summary { display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem; }
+.chip-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  font-size: .78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.chip-mini::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dot);
+}
+.chip-mini + .chip-mini { padding-left: .1rem; }
+
+.settings-toggle .chevron { color: var(--muted); }
+.settings-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
+.settings-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  width: 100%;
+  margin-top: -1rem;             /* zugeklappt kein Loch im Seitenfluss */
+  transition: grid-template-rows .5s cubic-bezier(.22, 1, .36, 1), margin-top .5s cubic-bezier(.22, 1, .36, 1);
+}
+.settings-panel.open { grid-template-rows: 1fr; margin-top: 0; }
+.settings-inner { min-height: 0; overflow: hidden; }
+/* Aufgeklappt dürfen die Kartenschatten wieder über den Rand. */
+.settings-panel.settled .settings-inner { overflow: visible; }
+.settings-inner > .options { margin-top: .25rem; padding-bottom: .5rem; }
+
+.settings-panel .slider-card,
+.settings-panel .options > :not(.cards, .advanced) {
+  opacity: 0;
+  transform: translateY(14px) scale(.97);
+  transition: opacity .25s ease, transform .5s cubic-bezier(.22, 1, .36, 1);
+}
+.settings-panel.open .slider-card,
+.settings-panel.open .options > :not(.cards, .advanced) {
+  opacity: 1;
+  transform: none;
+  transition-delay: calc(var(--k, 0) * 55ms + 80ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-panel, .settings-panel .slider-card, .settings-panel .options > * { transition: none !important; }
+}
+
 .options {
   width: 100%;
   display: flex;
