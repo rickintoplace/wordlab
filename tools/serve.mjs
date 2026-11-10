@@ -11,10 +11,25 @@ const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.txt': 'text/plain; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml',
+  '.mjs': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm',
 };
+// Slinky-Cut braucht SharedArrayBuffer (WASM-Threads): Seite und Worker
+// müssen „cross-origin isolated“ sein, wie in vercel.json.
+const ISOLATED = { 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'credentialless' };
+
+// Nur für Oberflächentests: SLINKY_DEV_DIR=… stellt Testdaten unter /__dev/ bereit
+const DEV = process.env.SLINKY_DEV_DIR;
 
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split('?')[0]);
+  if (DEV && url.startsWith('/__dev/')) {
+    const f = path.join(DEV, path.basename(url));
+    fs.readFile(f, (err, data) => {
+      if (err) { res.writeHead(404).end(); return; }
+      res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-cache', ...ISOLATED }).end(data);
+    });
+    return;
+  }
   // Wie die Weiterleitung in vercel.json.
   if (url === '/') { res.writeHead(302, { location: '/spoonerize' }).end(); return; }
   // cleanUrls wie bei Vercel: /misheard -> misheard.html
@@ -24,7 +39,9 @@ const server = http.createServer((req, res) => {
   if (!file.startsWith(root)) { res.writeHead(403).end(); return; }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found'); return; }
-    res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' });
+    const isolate = /^slinky/.test(name) ? ISOLATED : {};
+    // Entwicklung: immer frisch laden, sonst hängt der Browser an alten Modulen
+    res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-cache', ...isolate });
     res.end(data);
   });
 });

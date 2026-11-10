@@ -11,6 +11,8 @@ export const SOURCES = {
   'en_full.txt': 'https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/en/en_full.txt',
   // Profanitätsliste (hypernewbie/vbw). Wird in build-data.mjs kuratiert:
   // Slurs fliegen ganz raus, harmlose Fehltreffer gelten nicht als derb.
+  // Deutsche Aussprachen aus Wiktionary (WikiPron, CC BY-SA) – für SlinkyCut.
+  'deu_latn_broad.tsv': 'https://raw.githubusercontent.com/CUNY-CL/wikipron/master/data/scrape/tsv/deu_latn_broad.tsv',
   'profanity.txt': 'https://raw.githubusercontent.com/hypernewbie/vbw/main/profanity-list-main/list/en.txt',
 };
 

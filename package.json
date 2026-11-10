@@ -12,7 +12,9 @@
     "try": "node tools/try.mjs",
     "try:misheard": "node tools/try-oronyms.mjs",
     "tune": "node tools/tune-oronyms.mjs",
-    "census": "node tools/census.mjs"
+    "census": "node tools/census.mjs",
+    "slinky:data": "node build/build-slinkycut.mjs",
+    "slinky:e2e": "node tools/e2e-slinky.mjs"
   },
   "type": "module",
   "dependencies": {

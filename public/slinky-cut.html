@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Slinky-Cut | wordlab</title>
+  <meta name="description" content="Make someone in a video say something new, cut together from their own words and sounds. Runs in your browser.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Slinky-Cut — sentence mixing from a video">
+  <meta property="og:description" content="Load a video, type a sentence, and hear the speaker say it, cut from their own words, syllables and sounds.">
+  <meta property="og:url" content="https://wordlab.rickinto.place/slinky-cut">
+  <meta name="twitter:card" content="summary">
+  <meta name="theme-color" content="#131517">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="slinky/slinky.css">
+  <link rel="icon" href="/slinky/favicon.svg" type="image/svg+xml">
+  <script>
+    // Setzt das Thema noch vor dem ersten Bild, damit beim Laden nichts aufblitzt.
+    (() => {
+      try {
+        const saved = localStorage.getItem('rickintoplace-theme');
+        const theme = saved === 'light' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        document.querySelector('meta[name="theme-color"]')
+          .setAttribute('content', theme === 'light' ? '#f6f7f8' : '#131517');
+      } catch { /* ohne Speicher bleibt es beim Systemthema */ }
+    })();
+  </script>
+</head>
+
+<body data-page="slinky">
+  <nav class="site-nav">
+    <a class="brand" href="/spoonerize"><span data-icon="flask-conical"></span><span class="brand-name">wordlab</span></a>
+    <div class="tabs">
+      <a href="/spoonerize">Spoonerize</a>
+      <a href="/misheard">Misheard</a>
+      <a href="/slinky-cut" aria-current="page">Slinky-Cut</a>
+    </div>
+    <span data-theme-switch></span>
+  </nav>
+
+  <main>
+    <header class="sc-head">
+      <span class="sc-mark" data-icon="slinky" data-icon-size="72px"></span>
+      <h1>Slinky-Cut</h1>
+      <p class="tagline">Type a sentence. Hear the person in your video say it, cut from their own words, syllables and sounds.</p>
+    </header>
+
+    <!-- 1. Quelle -->
+    <section class="sc-source" id="source">
+      <label class="sc-drop" id="drop">
+        <input id="file" type="file" accept="video/*,audio/*" hidden>
+        <span class="sc-drop-icon" data-icon="upload" data-icon-size="22px"></span>
+        <span class="sc-drop-main">Drop a video here, or <u>choose a file</u></span>
+        <span class="sc-drop-sub">One speaker works best. Your video never leaves your computer.</span>
+      </label>
+      <p class="sc-note sc-fair">For parody and fun. Don't use it to make anyone believe a real person said something they didn't.</p>
+      <p class="sc-note sc-device" id="device-hint" hidden>Slinky-Cut needs a desktop computer: Chrome, Chromium or Firefox and about 2 GB of free memory. The first analysis downloads about 650 MB of models once.</p>
+
+      <div class="sc-loaded" id="loaded" hidden>
+        <video id="video" playsinline controls preload="metadata"></video>
+        <div class="sc-setup">
+          <p class="sc-filename" id="filename"></p>
+          <fieldset class="sc-seg" id="lang">
+            <legend>Spoken language</legend>
+            <label><input type="radio" name="lang" value="auto" checked><span>Detect</span></label>
+            <label><input type="radio" name="lang" value="en"><span>English</span></label>
+            <label><input type="radio" name="lang" value="de"><span>Deutsch</span></label>
+          </fieldset>
+          <label class="sc-check">
+            <input type="checkbox" id="separate" checked>
+            <span><strong>Separate voice and music</strong><br><small id="sep-hint">Cleaner cuts and a music track that keeps running. Slow in the browser.</small></span>
+          </label>
+          <div class="sc-row">
+            <button id="analyze" class="pill-button" type="button">Analyse video</button>
+            <button id="other" class="sc-link" type="button">Other file</button>
+          </div>
+          <p class="sc-note" id="estimate"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Analyse -->
+    <section class="sc-steps" id="steps" hidden>
+      <ol>
+        <li data-step="decode"><span class="dot"></span><span class="name">Reading audio</span><span class="bar"><i></i></span><span class="detail"></span></li>
+        <li data-step="separate"><span class="dot"></span><span class="name">Separating voice and music</span><span class="bar"><i></i></span><span class="detail"></span></li>
+        <li data-step="transcribe"><span class="dot"></span><span class="name">Writing down every word</span><span class="bar"><i></i></span><span class="detail"></span></li>
+        <li data-step="speakers"><span class="dot"></span><span class="name">Telling voices apart</span><span class="bar"><i></i></span><span class="detail"></span></li>
+        <li data-step="phonemes"><span class="dot"></span><span class="name">Hearing every sound</span><span class="bar"><i></i></span><span class="detail"></span></li>
+        <li data-step="align"><span class="dot"></span><span class="name">Placing sounds in time</span><span class="bar"><i></i></span><span class="detail"></span></li>
+        <li data-step="prepare"><span class="dot"></span><span class="name">Measuring the voice</span><span class="bar"><i></i></span><span class="detail"></span></li>
+      </ol>
+      <p class="sc-note">Runs once per video and is kept in this browser. The models download on first use (about 600 MB, cached).</p>
+    </section>
+
+    <!-- 3. Schneiden -->
+    <section class="sc-studio" id="studio" hidden>
+      <div class="sc-desk">
+        <div class="sc-monitor">
+          <div class="sc-screen" id="screen">
+            <canvas id="screen-cv" width="1280" height="720"></canvas>
+            <span class="sc-badge" id="pv-badge" hidden>lips</span>
+          </div>
+          <div class="sc-transport">
+            <button class="sc-tbtn sc-tplay" id="t-play" type="button" aria-label="Play (Space)" title="Play / pause (Space)"><span data-icon="play" data-icon-size="18px"></span></button>
+            <span class="sc-time" id="t-time">0:00.0</span>
+            <span class="sc-tsep"></span>
+            <button class="sc-tbtn" id="t-split" type="button" title="Split at playhead (S)"><span data-icon="scissors" data-icon-size="16px"></span></button>
+            <button class="sc-tbtn" id="t-mute" type="button" title="Mute (M)"><span data-icon="volume-x" data-icon-size="16px"></span></button>
+            <button class="sc-tbtn" id="t-dup" type="button" title="Duplicate (Ctrl+D)"><span data-icon="copy" data-icon-size="16px"></span></button>
+            <button class="sc-tbtn" id="t-xfade" type="button" title="Crossfade with neighbours (X)"><span data-icon="xfade" data-icon-size="16px"></span></button>
+            <button class="sc-tbtn" id="t-rev" type="button" title="Backwards (R)"><span data-icon="rewind" data-icon-size="16px"></span></button>
+            <button class="sc-tbtn" id="t-del" type="button" title="Delete (Del)"><span data-icon="trash" data-icon-size="16px"></span></button>
+            <span class="sc-tsep"></span>
+            <button class="sc-tbtn" id="t-undo" type="button" title="Undo (Ctrl+Z)"><span data-icon="undo" data-icon-size="16px"></span></button>
+            <button class="sc-tbtn" id="t-redo" type="button" title="Redo (Ctrl+Shift+Z)"><span data-icon="redo" data-icon-size="16px"></span></button>
+            <span class="sc-tgrow"></span>
+            <label class="sc-zoom" title="Zoom (+ / −)"><span data-icon="zoom" data-icon-size="15px"></span><input id="t-zoom" type="range" min="0" max="100" value="20" aria-label="Zoom"></label>
+            <div class="sc-export">
+              <button class="sc-tbtn sc-texport" id="t-export" type="button" aria-haspopup="true" aria-expanded="false"><span data-icon="download" data-icon-size="15px"></span> Export</button>
+              <div class="sc-menu" id="export-menu" hidden>
+                <button type="button" data-export="video">Video <small id="export-video-hint">MP4, frame by frame</small></button>
+                <button type="button" data-export="wav">Sound only (WAV)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="sc-side">
+          <div class="sc-side-in">
+            <form class="sc-say" id="say" autocomplete="off">
+              <label for="text" class="sc-label">What should they say?</label>
+              <div class="sc-say-row">
+                <input id="text" type="text" spellcheck="true" placeholder="Type a sentence">
+                <button class="sc-go" type="submit" title="Cut it: the result appears below, ready to drag onto a track"><span data-icon="scissors" data-icon-size="15px"></span> Cut it</button>
+              </div>
+              <div class="sc-say-opts">
+                <label class="sc-voice" id="voice-pick" hidden>Voice <select id="voice"></select></label>
+                <span class="sc-legend"><span class="q whole">whole word</span> <span class="q syllables">syllables</span> <span class="q sounds">single sounds</span></span>
+                <button type="button" class="sc-link" id="ideas-btn" aria-expanded="false"><span data-icon="sparkles" data-icon-size="14px"></span> Ideas</button>
+              </div>
+              <div class="sc-ideas" id="ideas" hidden>
+                <label>What about? <small>(optional)</small><input id="ideas-topic" type="text" placeholder="e.g. a cooking show, a breakup, the weather"></label>
+                <div class="sc-ideas-row">
+                  <label>OpenRouter key<input id="ideas-key" type="password" autocomplete="off" placeholder="sk-or-…"></label>
+                  <label>Model<input id="ideas-model" type="text" list="ideas-models" spellcheck="false"></label>
+                  <datalist id="ideas-models"></datalist>
+                </div>
+                <div class="sc-row">
+                  <button type="button" class="sc-go" id="ideas-go"><span data-icon="sparkles" data-icon-size="14px"></span> Get ideas</button>
+                  <span class="sc-note" id="ideas-status"></span>
+                </div>
+                <p class="sc-note">A language model writes sentences from the words in this video; Slinky-Cut cuts each one and keeps the best-sounding. This sends the transcript (text only, never the video) to OpenRouter and the model you choose. Your key stays in this browser. Get one at openrouter.ai/keys.</p>
+              </div>
+              <ol class="sc-bin" id="bin" hidden aria-label="Your cut sentences"></ol>
+            </form>
+
+            <div class="sc-panel" id="inspector"></div>
+
+            <div class="sc-find">
+              <label for="find" class="sc-label">Find a word, syllable or sound</label>
+              <input id="find" type="search" placeholder="e.g. Wahrheit, ga, sch" autocomplete="off">
+              <ol class="sc-results" id="results"></ol>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="sc-timeline" id="timeline"></div>
+      <p class="sc-keys">Space play · double-click empty space: play from there · drag: select several · Shift/Ctrl-click: add · Alt-drag: copy · S split · X crossfade · R backwards · M mute · Ctrl+C/X/V/D · Del (Shift: close gap) · Alt+←/→ nudge · Shift+Z fit · right-click for more</p>
+      <div class="sc-pop" id="pop" hidden></div>
+      <div class="sc-ctx" id="ctx" role="menu" hidden></div>
+
+      <details class="sc-transcript">
+        <summary>Everything they say <span id="wordcount"></span></summary>
+        <p id="transcript"></p>
+      </details>
+    </section>
+
+    <p class="sc-error" id="error" role="alert" hidden></p>
+  </main>
+
+  <footer class="site-foot">
+    <a href="/legal">Privacy &amp; imprint</a>
+    <a href="https://rickinto.place">rickinto.place<span data-icon="external-link" data-icon-size="12px"></span></a>
+  </footer>
+
+  <script type="module" src="theme.js"></script>
+  <script type="module" src="slinky/app.js"></script>
+</body>
+</html>

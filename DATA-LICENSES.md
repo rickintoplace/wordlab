@@ -8,6 +8,8 @@ The code in this repository is MIT-licensed (see `LICENSE`). The files in
 | `words.txt`, `lexicon-extra.txt` | CMU Pronouncing Dictionary (pronunciations), FrequencyWords by Hermit Dave (frequency ranks) | CC BY-SA 4.0, see below |
 | `vulgar.txt` | hypernewbie/vbw, curated (`build/blocked.mjs`, `build/not-vulgar.mjs`) | MIT (vbw), CC BY-SA 4.0 for this selection |
 | `bigrams.txt`, `phrases.txt` | Word-pair counts from 40 million lines of OpenSubtitles2018 (OPUS) | CC BY-SA 4.0 |
+| `slinky/lex-en.txt` | CMU Pronouncing Dictionary, converted to the IPA symbols of the phoneme model | BSD-style (CMU notice below) |
+| `slinky/lex-de.txt` | German pronunciations from Wiktionary via WikiPron, converted and with rule-based stress | CC BY-SA 4.0 |
 
 Because the frequency ranks come from FrequencyWords, whose content is
 licensed CC BY-SA 4.0, the derived data files are released under
@@ -18,6 +20,14 @@ Hunspell's English dictionary (`dictionary-en`, MIT/BSD) is only used at build
 time to filter out proper names; none of it is redistributed. The icons in
 `public/icons.js` are path data from [Lucide](https://lucide.dev) (ISC).
 
+Slinky-Cut downloads four models into the visitor's browser at run time;
+none of them is part of this repository: Whisper small (MIT, via
+`onnx-community/whisper-small_timestamped`), wav2vec2-xlsr-53-espeak-cv-ft
+(Apache-2.0, via `qnighy/wav2vec2-xlsr-53-espeak-cv-ft-ONNX`), HT-Demucs FT
+vocals (MIT, via `StemSplitio/htdemucs-ft-vocals-onnx`) and the WeSpeaker
+ResNet34 voice embedding trained on VoxCeleb by pyannote (CC BY 4.0, via
+`onnx-community/wespeaker-voxceleb-resnet34-LM`) to tell speakers apart.
+
 ## Sources
 
 - **CMU Pronouncing Dictionary** — https://github.com/cmusphinx/cmudict
@@ -27,6 +37,8 @@ time to filter out proper names; none of it is redistributed. The icons in
   P. Lison and J. Tiedemann (2016): *OpenSubtitles2016: Extracting Large
   Parallel Corpora from Movie and TV Subtitles.* LREC 2016. Only aggregate
   word-pair counts are distributed, no text.
+- **WikiPron** (Lee et al. 2020) — https://github.com/CUNY-CL/wikipron, data
+  scraped from Wiktionary (CC BY-SA 4.0)
 - **vbw** by Xi Ma Chen — https://github.com/hypernewbie/vbw (MIT)
 
 ## CMU Pronouncing Dictionary notice

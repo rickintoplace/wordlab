@@ -31,6 +31,7 @@
     <div class="tabs">
       <a href="/spoonerize">Spoonerize</a>
       <a href="/misheard">Misheard</a>
+      <a href="/slinky-cut">Slinky-Cut</a>
     </div>
     <span data-theme-switch></span>
   </nav>
@@ -99,6 +100,17 @@
         rude words from <a href="https://github.com/hypernewbie/vbw">hypernewbie/vbw</a>.
         The icons are <a href="https://lucide.dev">Lucide</a> (ISC licence).
       </p>
+      <p>
+        Slinky-Cut uses German pronunciations derived from
+        <a href="https://github.com/CUNY-CL/wikipron">WikiPron</a>, extracted from
+        <a href="https://www.wiktionary.org">Wiktionary</a> (CC BY-SA 4.0; the adapted
+        word list is shared under the same licence). In your browser it runs these
+        models: Whisper small by OpenAI (MIT), wav2vec2-xlsr-53-espeak-cv-ft by
+        Facebook AI (Apache 2.0), HT-Demucs by Meta AI (MIT) and the WeSpeaker
+        ResNet34 voice model trained by <a href="https://github.com/pyannote">pyannote</a>
+        (CC BY 4.0), together with the libraries Transformers.js (Apache 2.0),
+        ONNX Runtime Web (MIT) and mp4-muxer (MIT).
+      </p>
 
       <h3>Note on this translation</h3>
       <p>
@@ -118,6 +130,13 @@
         to your browser once and every search runs on your own device — what you
         type is never sent anywhere. There are no cookies, no tracking, no
         analytics, no accounts and no contact forms.
+      </p>
+      <p>
+        Slinky-Cut works the same way: the videos you load are analysed and edited
+        only in your browser and are never uploaded. To do that it loads program
+        libraries and AI models from two third-party services (see “Slinky-Cut:
+        libraries and models”). Text leaves your device only if you use the optional
+        “Ideas” feature with your own OpenRouter key (see below).
       </p>
 
       <h3>Controller</h3>
@@ -160,6 +179,43 @@
         transmitted, and you can delete it at any time by clearing site data.
       </p>
 
+      <h3>Slinky-Cut: libraries and models</h3>
+      <p>
+        When you analyse a video or export one, Slinky-Cut loads program libraries
+        from the jsDelivr CDN (operated by Prospect One sp. z o.o., Poland, delivered
+        through networks such as Cloudflare and Fastly) and AI models from Hugging Face
+        (Hugging Face, Inc., USA). Like any web request, this transmits your IP
+        address, the time, the requested file and your browser's user agent to these
+        providers; your video and its contents are not transmitted. The legal basis is
+        Art. 6(1)(f) GDPR; the legitimate interest is providing the analysis features
+        without sending your videos to a server. Hugging Face is based in the United
+        States, so data may be transferred to a third country; where applicable such
+        transfers rest on appropriate safeguards such as the EU Standard Contractual
+        Clauses.
+      </p>
+
+      <h3>Slinky-Cut: storage on your device</h3>
+      <p>
+        So that you do not have to wait again, Slinky-Cut keeps the downloaded models,
+        the results of each analysis (transcript, sound positions and the separated
+        voice and music tracks) and your projects in your browser's storage (Cache
+        Storage and IndexedDB). If you enter an OpenRouter key and model for “Ideas”,
+        both are kept in local storage. None of this leaves your device. You can
+        delete all of it at any time by clearing this site's data in your browser.
+      </p>
+
+      <h3>Slinky-Cut: optional ideas via OpenRouter</h3>
+      <p>
+        The “Ideas” feature is off until you use it. When you press “Get ideas”, your
+        browser sends an excerpt of the video's transcript, a list of the words spoken
+        in it and the theme you typed, together with your own API key, directly to
+        OpenRouter, Inc. (USA), which forwards the request to the language model you
+        chose. This happens only at your request (Art. 6(1)(a) GDPR); OpenRouter and
+        the model provider process the request under their own privacy policies and
+        your agreement with OpenRouter. This site does not receive the request, the
+        key or the answer.
+      </p>
+
       <h3>Reading results aloud</h3>
       <p>
         The “hear it” buttons use your browser's built-in speech synthesis
@@ -193,7 +249,7 @@
         <a href="mailto:rickintoplace@proton.me">rickintoplace@proton.me</a>.
       </p>
 
-      <p class="updated">Last updated: 20 September 2026</p>
+      <p class="updated">Last updated: 10 November 2026</p>
     </section>
   </main>
 

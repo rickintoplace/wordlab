@@ -1,6 +1,6 @@
 # wordlab
 
-Two small tools for English word play that work on **sounds**, not letters.
+Small tools for word play that work on **sounds**, not letters.
 
 - **[Misheard](https://wordlab.rickinto.place/misheard)** takes a phrase and
   finds other ways to cut the same sounds into words: *kiss the sky* → *kiss
@@ -11,8 +11,14 @@ Two small tools for English word play that work on **sounds**, not letters.
   by default only if both lines are things people actually say: *light rain* →
   *right lane*, *magic tricks* → *tragic mix*.
 
-Both run entirely in the browser. It's a static site: HTML, CSS, ES modules and
-a few text files. There's no server, no language model and no tracking.
+- **[Slinky-Cut](https://wordlab.rickinto.place/slinky-cut)** makes the person in
+  a video say something new, cut from their own words, syllables and sounds
+  (sentence mixing, as in YouTube Poop), in English and German.
+
+All of them run entirely in the browser. It's a static site: HTML, CSS, ES
+modules and a few text files. There's no server and no tracking. Slinky-Cut
+downloads its AI models (about 650 MB) into the browser on first use; its
+optional “Ideas” feature calls a language model through your own OpenRouter key.
 
 ## How Misheard works
 
@@ -73,6 +79,48 @@ abbreviations that are pronounced like words (`st` as /stɹit/), and a long tail
 of rare words, which the "how common" slider cuts at a frequency rank. A
 four-step rudeness slider uses a curated profanity list. Slurs and terms around
 sexual violence never get into the data (`build/blocked.mjs`).
+
+## How Slinky-Cut works
+
+Everything runs in the browser, one heavy model at a time in its own worker
+(`public/slinky/stages.js`), and the result is cached in IndexedDB:
+
+1. **Separate** voice and music (HT-Demucs, ONNX), so the music stays one
+   clean, continuous track.
+2. **Transcribe** with Whisper small (word timestamps, language detection) and
+   **tell voices apart** with WeSpeaker embeddings.
+3. **Hear every sound** with a phoneme recognizer (wav2vec2-xlsr-53-espeak) and
+   **place each sound in time** by forced alignment against our own lexicons
+   (`public/data/slinky/`, built by `npm run slinky:data`).
+4. **Cut** (`engine.js`): unit selection over half-phones — whole words first,
+   then syllables, then single sounds — scored by context, word position,
+   phrase-final intonation, stress, loudness and spectral fit at each join;
+   rendered with waveform-aligned crossfades and room tone in pauses.
+
+The editor (`timeline.js`, `player.js`, `project.js`) has tracks for video,
+lip-sync snippets, voice and music; clips can be moved, trimmed, split, faded,
+crossfaded (X), reversed and sped up, and every word or syllable can be swapped
+for alternatives or retyped.
+
+### Scripting it
+
+With a video analysed, `window.slinkyCut` lets scripts and browser agents edit:
+
+```js
+const t = slinkyCut.transcript();                     // [{w, s, e, spk}]
+const { id, words } = await slinkyCut.cut('Die Wahrheit ist neu.');
+const alts = await slinkyCut.alternatives(id, 1);     // word 1; add a syllable index for one syllable
+slinkyCut.choose(alts.findIndex(a => !a.current));
+await slinkyCut.rewrite(id, 3, 'rätselhaft');         // retype word 3
+slinkyCut.place(id, 12.5);                            // onto the voice track at 12.5 s
+slinkyCut.play(10, 20);
+const wav = slinkyCut.wav();                          // whole mix as a WAV blob
+await slinkyCut.ideas('a cooking show');              // needs the OpenRouter key in the Ideas box
+```
+
+UI test without models (feeds a prepared analysis into the browser, with a
+memory guard): `SLINKY_DEV_DIR=<data> npm run dev`, then
+`node tools/ui-slinky.mjs <video> <script.mjs>`.
 
 ## Running it
 
