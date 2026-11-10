@@ -44,6 +44,7 @@ export const W = {
   burstLeak: 2.0,        // behauchter Anfang nach stimmlosem Verschluss, wo das Ziel keinen hat („lol“ → „klol“), je 20 ms
   sylRole: 1.0,          // Konsonant im Silbenanfang vs. Silbenende (anders gesprochen: „ts“ in „Wur-zeln“ ≠ „Furz“)
   sylLast: 0.6,          // Vokal/Endkonsonant aus letzter vs. nicht letzter Silbe des Worts (Längung am Wortende)
+  chain: 1.5,            // Bonus, wenn zwei Wörter am Stück aus der Quelle kommen (Satzmelodie bleibt natürlich)
   normLoud: 0,           // Stücke auf globale Sprechlautstärke bringen (Runde 4: eher störend)
 };
 
@@ -419,7 +420,7 @@ export function select(src, tgt, K = 250, constrain = {}, cuts = 'all', only = n
       return c;
     }
     const T = tgt.phones[st / 2 - 1];
-    if (!T.pauseAfter && a.p.next === b.p.i) return 0;
+    if (!T.pauseAfter && a.p.next === b.p.i) return T.w !== tgt.phones[st / 2].w ? -W.chain : 0;
     if (T.pauseAfter) return 0;                  // Pause: Schnitt fällt in Stille
     if (cuts === 'mid' || (cuts === 'syll' && !syl.has(st / 2))) return BAN;
     // Was in der Quelle auf a folgt, sollte b ähneln, und was b vorausgeht, a.

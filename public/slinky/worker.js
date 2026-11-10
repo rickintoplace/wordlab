@@ -130,10 +130,10 @@ function cut(text, speaker, force = {}) {
     const T = tgt.phones[ti], b = new Set(ban);
     if (T) constrain[ti] = p => !b.has(p.i) && fits(p, T) && p.e - p.s >= 0.015 && p.lp > -4;
   }
-  const { chosen, stepCost } = select(src, tgt, 250, constrain, 'all', only);
+  const { chosen, stepCost, total } = select(src, tgt, 250, constrain, 'all', only);
   const segs = plan(src, tgt, chosen);
   const audio = render(src, segs);
-  return { tgt, chosen, segs, audio, instances, force: F, stepCost };
+  return { tgt, chosen, segs, audio, instances, force: F, stepCost, total };
 }
 
 /** Wo im Quellwort ein Stück liegt: ganz, Anfang, Ende oder Mitte. */
@@ -270,7 +270,31 @@ function option(text, speaker, force, wi, label, kind, seen, cur, extra = {}) {
   seen.add(sig);
   const picks = Object.fromEntries(r.tgt.phones.map((_, ti) => [ti, [r.chosen[2 * ti].p.i, r.chosen[2 * ti + 1].p.i]]));
   return { label, kind, force: r.force, quality: w.quality, pieces: w.pieces, audio: r.audio, words: d.words, segs: d.pieces,
-    current: sig === cur, picks, ...extra };
+    current: sig === cur, picks, fit: r.total, feel: feel(r, wi), ...extra };
+}
+
+/** Die Wörter um ein Stück Quelle herum (zwei davor, zwei danach), zum Wiedererkennen. */
+function contextOf(used) {
+  const { src } = current;
+  if (!used?.length) return '';
+  const si = src.phones[Math.min(...used)].w;
+  return src.words.slice(Math.max(0, si - 2), si + 3).map(x => x.w).join(' ');
+}
+
+/**
+ * Wie das Wort im Vergleich zu seinen Nachbarn im Satz klingt: Tonhöhe (Halbtöne)
+ * und Tempo (Dauer relativ zur üblichen Dauer der Laute). Hilft beim Aussuchen nach Gehör.
+ */
+function feel(r, wi) {
+  const { src } = current;
+  const med = xs => { const a = xs.filter(x => x != null && Number.isFinite(x)).sort((p, q) => p - q); return a.length ? a[a.length >> 1] : null; };
+  const of = w => r.tgt.phones.map((p, ti) => (p.w === w ? r.chosen[2 * ti].p : null)).filter(Boolean);
+  const pitch = ps => med(ps.filter(p => isVowel(p.t) && p.F?.m?.f0).map(p => Math.log2(p.F.m.f0)));
+  const rate = ps => med(ps.map(p => (p.e - p.s) / src.typical(p.t)));
+  const me = of(wi), nb = [...of(wi - 1), ...of(wi + 1)];
+  if (!nb.length) return null;
+  const f0 = pitch(me), f1 = pitch(nb), r0 = rate(me), r1 = rate(nb);
+  return { pitch: f0 != null && f1 != null ? +(12 * (f0 - f1)).toFixed(1) : null, tempo: r0 && r1 ? +(r0 / r1).toFixed(2) : null };
 }
 
 /** Alternativen für ein Wort im Satz: andere Vorkommen, frei gebaut, weitere Bauweisen. */
@@ -284,15 +308,23 @@ function variants({ id, text, speaker, force = {}, wi }) {
   const push = o => o && opts.push(o);
   // Die aktuelle Fassung zuerst, damit man vergleichen kann
   push(option(text, speaker, F, wi, `Current: ${cur.quality === 'whole' ? `“${cur.spanned.join(' ')}” at ${clock(cur.at)}` : `from ${cur.from.join(' + ')}`}`, 'current', seen, curSig,
-    { info: cur.quality === 'whole' ? { kind: 'whole', word: cur.spanned.join(' '), at: cur.at } : { kind: 'mix', from: cur.from } }));
-  // 1. jedes Vorkommen des ganzen Worts (beim Sprecher), mit Zeitstempel
-  for (const si of base.instances[wi] ?? []) {
-    const sw = src.words[si];
-    push(option(text, speaker, { ...without, words: { ...without.words, [wi]: si } }, wi,
-      `“${sw.w.replace(/[^\p{L}\p{N}'-]/gu, '')}” at ${clock(sw.as ?? sw.s)}`, 'whole', seen, curSig,
-      { at: sw.as ?? sw.s, info: { kind: 'whole', word: sw.w.replace(/[^\p{L}\p{N}'-]/gu, ''), at: sw.as ?? sw.s } }));
-    if (opts.length >= 8) break;
+    { info: cur.quality === 'whole' ? { kind: 'whole', word: cur.spanned.join(' '), at: cur.at, context: contextOf(cur.used) } : { kind: 'mix', from: cur.from } }));
+  // 1. jedes Vorkommen des ganzen Worts (beim Sprecher), mit Zeitstempel und dem Satz drumherum;
+  //    das am besten passende zuerst (geringste Schnittkosten im ganzen Satz)
+  const whole = [];
+  for (const si of (base.instances[wi] ?? []).slice(0, 12)) {
+    const sw = src.words[si], word = sw.w.replace(/[^\p{L}\p{N}'-]/gu, '');
+    const around = contextOf([sw.ps]);
+    const o = option(text, speaker, { ...without, words: { ...without.words, [wi]: si } }, wi,
+      `“${word}” at ${clock(sw.as ?? sw.s)}`, 'whole', seen, curSig,
+      { at: sw.as ?? sw.s, info: { kind: 'whole', word, at: sw.as ?? sw.s, context: around } });
+    if (o) whole.push(o);
   }
+  // „In use“ (falls ganzes Wort) zählt beim Vergleich mit
+  const cmp = [...whole, ...opts.filter(o => o.current && o.quality === 'whole')];
+  const best = cmp.length > 1 ? cmp.reduce((a, b) => (b.fit < a.fit ? b : a)) : null;
+  if (best) best.best = true;
+  opts.push(...whole.sort((a, b) => a.fit - b.fit).slice(0, 7));
   // 2. aus Teilen gebaut, dann weitere Bauweisen, die die Laute der vorigen meiden
   let avoid = [];
   for (let k = 0; k < 4 && opts.length < 10; k++) {

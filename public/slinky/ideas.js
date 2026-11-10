@@ -17,7 +17,7 @@ What makes a good YTP line:
 - swapped roles: who does what to whom (the prey eats the hunter, the narrator is the food, the viewer gets hunted)
 Short and punchy beats long. Do not explain jokes. Mix the styles across lines, and make at least half of them rude, gross or profane: YTP is not polite.
 
-Recombine, don't quote: words should come from different places in the transcript. Never keep more than three words in a row from the original, and never keep its meaning. A line that could appear in the original is a failed line.
+Recombine, don't quote: build each line from chunks of one to three words taken exactly as they stand in the transcript ("im Wasser", "die ganze", "haben Hunger"), glued together from different places. Chunks keep their natural melody, so a line made of a few chunks sounds far more natural than one made of single words from everywhere. But never keep more than three words in a row from the original, and never keep its meaning. A line that could appear in the original is a failed line.
 
 Pattern examples (from a cooking show, not your vocabulary):
 original: "Now we add the butter slowly to the warm pan"

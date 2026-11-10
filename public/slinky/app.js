@@ -807,9 +807,12 @@ async function pickAlternative(target) {
       const dot = el('span', `sc-dot ${o.quality}`);
       const main = el('button', 'sc-alt-main');
       main.type = 'button';
-      const { name, detail } = altText(o, si, sylNames);
-      main.append(el('span', 'sc-alt-name', esc(name)), el('small', '', esc(detail)));
-      main.title = o.current ? 'In use' : 'Use this one';
+      const { name, detail, context, best } = altText(o, si, sylNames);
+      const nameEl = el('span', 'sc-alt-name', esc(name));
+      if (best) nameEl.append(' ', el('span', 'sc-best', 'fits best'));
+      main.append(nameEl, el('small', '', esc(detail)));
+      if (context) main.append(el('small', 'sc-alt-ctx', `“…${esc(context)}…”`));
+      main.title = (o.current ? 'In use' : 'Use this one') + (best ? ' · joins most smoothly with the rest of the sentence' : '');
       main.addEventListener('click', () => {
         const next = o.current ? null : target.use(o);
         const [a, b] = hearSpan(o);
@@ -835,7 +838,14 @@ function altText(o, si, sylNames) {
   const use = o.current ? 'In use · ' : '';
   const time = i.at != null ? ` · ${clock(i.at, false)}` : '';
   const where = { all: 'all of', start: 'the start of', end: 'the end of', middle: 'the middle of' }[i.pos] ?? 'part of';
-  if (i.kind === 'whole') return { name: `${use}“${i.word}”`, detail: `the whole word from the video${time}` };
+  if (i.kind === 'whole') {
+    // wie es neben den Nachbarwörtern klingt, und wo es herkommt
+    const f = o.feel, how = [];
+    if (f?.pitch != null && Math.abs(f.pitch) >= 1.5) how.push(`${Math.abs(f.pitch) >= 4 ? 'much ' : ''}${f.pitch > 0 ? 'higher' : 'lower'}`);
+    if (f?.tempo != null && (f.tempo > 1.2 || f.tempo < 0.83)) how.push(f.tempo > 1 ? 'slower' : 'faster');
+    const feel = f ? (how.length ? `${how.join(', ')} than the words around it` : 'matches the words around it') : 'the whole word from the video';
+    return { name: `${use}“${i.word}”`, detail: `${feel}${time}`, context: i.context, best: o.best };
+  }
   if (i.kind === 'syllable') return { name: `${use}${where} “${i.word}”`, detail: `sounds like “${sylNames[si] ?? ''}”${i.similar ? ' (close, not exact)' : ''}${time}` };
   const from = [...new Set(i.from)];
   if (from.length === 1) return { name: `${use}pieces of “${from[0]}”`, detail: 'put together from several spots' };

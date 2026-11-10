@@ -207,6 +207,9 @@ body.sc-editing .sc-mark .icon { width: 40px; height: 40px; }
 .sc-results li { grid-template-columns: auto minmax(0, 1fr) auto auto; }
 .sc-alts li:hover, .sc-results li:hover { background: var(--card-bg); }
 .sc-alts li.current { background: color-mix(in srgb, var(--c-onset-1) 12%, transparent); }
+.sc-best { display: inline-block; padding: 0 .4em; border-radius: 99px; font-size: .68rem; font-weight: 650; vertical-align: .1em;
+  color: var(--c-rime-1); border: 1px solid color-mix(in srgb, var(--c-rime-1) 55%, transparent); }
+.sc-alt-ctx { font-style: italic; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-alts .q { font-size: .88rem; }
 .sc-mini {
   width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); background: none; color: var(--fg);
@@ -342,7 +345,7 @@ body.sc-editing .sc-mark .icon { width: 40px; height: 40px; }
   position: fixed; z-index: 20; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
   box-shadow: 0 12px 32px rgb(0 0 0 / .35);
 }
-.sc-pop { width: min(24rem, calc(100vw - 16px)); padding: .7rem .75rem .6rem; display: grid; gap: .6rem; max-height: 70vh; overflow-y: auto; }
+.sc-pop { width: min(24rem, calc(100vw - 16px)); padding: .7rem .75rem .6rem; display: grid; gap: .6rem; grid-template-columns: minmax(0, 1fr); max-height: 70vh; overflow-y: auto; overflow-x: hidden; }
 .sc-pop-head { display: flex; align-items: center; gap: .5rem; }
 .sc-pop-title {
   flex: 1; min-width: 0; font: inherit; font-size: 1.15rem; font-weight: 700; color: var(--fg);
