@@ -155,6 +155,12 @@ body.sc-editing .sc-mark .icon { width: 40px; height: 40px; }
 .sc-menu button { text-align: left; background: none; border: 0; border-radius: 6px; padding: .55rem .7rem; font: inherit; color: var(--fg); cursor: pointer; display: grid; }
 .sc-menu button:hover { background: var(--card-bg); }
 .sc-menu small { color: var(--muted); }
+.sc-scope { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; margin: .1rem .1rem .2rem; border-radius: 8px; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sc-menu .sc-scope button { padding: .35rem .5rem; text-align: center; font-size: .82rem; color: var(--muted); align-content: center; }
+.sc-menu .sc-scope small { display: block; font-size: .72rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.sc-menu .sc-scope button[aria-checked="true"] { background: var(--surface); color: var(--fg); font-weight: 650; box-shadow: 0 1px 2px color-mix(in srgb, var(--fg) 15%, transparent); }
+.sc-menu .sc-scope button:disabled { opacity: .45; cursor: default; }
+.sc-scope-hint { display: block; padding: 0 .7rem .3rem; font-size: .76rem; }
 
 /* Seitenleiste */
 /* Die Seitenleiste darf das Layout nicht verschieben: Sie ist so hoch wie der
@@ -274,8 +280,8 @@ body.sc-editing .sc-mark .icon { width: 40px; height: 40px; }
 .tl-ghost { position: absolute; z-index: 4; border-radius: 6px; border: 2px dashed var(--c-onset-1); background: color-mix(in srgb, var(--c-onset-1) 15%, transparent); pointer-events: none; }
 .tl-box { position: absolute; z-index: 4; border: 1px solid var(--c-onset-1); background: color-mix(in srgb, var(--c-onset-1) 12%, transparent); pointer-events: none; }
 .tl-clip.muted { opacity: .38; background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--fg) 10%, transparent) 6px 8px); }
-.tl-wave { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.tl-label { position: relative; display: block; padding: 3px 7px; font-size: .74rem; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); pointer-events: none; }
+.tl-wave { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+.tl-label { position: relative; display: inline-block; max-width: 100%; padding: 3px 7px; font-size: .74rem; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); pointer-events: none; }
 .tl-words { position: absolute; inset: 0; }
 .tl-word {
   position: absolute; top: 0; bottom: 0; padding: 4px 3px 0; font-size: .74rem; font-weight: 700; color: var(--fg);
@@ -285,6 +291,16 @@ body.sc-editing .sc-mark .icon { width: 40px; height: 40px; }
 .tl-word:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 /* Transkript in der Originalstimme: nur zum Lesen, Klicks gehen an den Clip */
 .tl-src .tl-word { font-weight: 600; color: color-mix(in srgb, var(--fg) 80%, transparent); }
+.tl-range {
+  position: absolute; top: 0; bottom: 0; z-index: 2; pointer-events: none;
+  background: color-mix(in srgb, var(--c-rime-1) 7%, transparent);
+  border-inline: 1px solid color-mix(in srgb, var(--c-rime-1) 55%, transparent);
+}
+.tl-range::before { content: ''; position: absolute; inset: 0 0 auto; height: 26px; background: color-mix(in srgb, var(--c-rime-1) 30%, transparent); pointer-events: auto; cursor: text; }
+.tl-loc { position: absolute; top: 0; width: 12px; height: 26px; pointer-events: auto; cursor: ew-resize; z-index: 1; }
+.tl-loc::after { content: ''; position: absolute; top: 0; border: 7px solid transparent; border-top: 11px solid var(--c-rime-1); }
+.tl-loc.in { left: -1px; } .tl-loc.in::after { left: -6px; }
+.tl-loc.out { right: -1px; } .tl-loc.out::after { right: -6px; }
 .tl-playhead { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; margin-left: -1px; background: var(--c-onset-1); pointer-events: none; z-index: 3; }
 .tl-playhead::before { content: ''; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top-color: var(--c-onset-1); }
 .sc-keys { margin: -.4rem 0 0; color: var(--muted); font-size: .76rem; line-height: 1.5; }

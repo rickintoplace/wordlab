@@ -25,6 +25,21 @@ export function soundClass(t) {
   return b;
 }
 
+/**
+ * Gleicher Laut, nur anders geschrieben (freie Varianten, kein Bedeutungsunterschied):
+ * r/ɾ/ʁ/ʀ/ɹ, vokalisches r (ɐ/ɜ/ɚ), die Schreibweisen der Diphthonge. Wörterbuch
+ * und Phonemmodell schreiben dasselbe r verschieden – beim Vergleich zählt das nicht.
+ * Länge (aː/a) und Qualität (eː/ɛ) bleiben verschieden.
+ */
+export function canon(t) {
+  if (!t) return t;
+  if (/^(r|ʁ|ɾ|ʀ|ɹ)$/.test(t)) return 'r';
+  if (/^(ɐ|ɜ|ɚ|ɐ̯)$/.test(t)) return 'ɐ';
+  const c = soundClass(t);
+  if (c === 'OY' || c === 'AI' || c === 'AU') return c;
+  return t;
+}
+
 /** Nur echte Einzellaute aus dem Modell-Vokabular (keine Silbenkombis, keine Tonziffern). */
 export function phoneVocab(vocab) {
   const COMBOS = new Set(['əl', 'ɔːɹ', 'ɑːɹ', 'oːɹ', 'ɛɹ', 'ɪɹ', 'ʊɹ', 'aɪə', 'aɪɚ', 'ja', 'ju']);

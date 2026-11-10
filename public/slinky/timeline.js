@@ -26,6 +26,7 @@ export class Timeline extends EventTarget {
     this.clips = [];
     this.sel = new Set();
     this.playhead = 0;
+    this.range = null;             // {a, b}: Bereich zum Ausgeben (Marken oben im Lineal)
     this.pps = 40;                 // Pixel pro Sekunde
     this.history = [];
     this.future = [];
@@ -165,7 +166,12 @@ export class Timeline extends EventTarget {
     this.box = document.createElement('div');
     this.box.className = 'tl-box';
     this.box.hidden = true;
-    this.lane.append(this.head, this.box);
+    // Ausgabebereich: Band im Lineal mit zwei Marken, darunter leicht getönt
+    this.rangeEl = document.createElement('div');
+    this.rangeEl.className = 'tl-range';
+    this.rangeEl.innerHTML = '<span class="tl-loc in" data-loc="a" title="Range start – drag to move (I sets it at the playhead)"></span><span class="tl-loc out" data-loc="b" title="Range end – drag to move (O sets it at the playhead)"></span>';
+    this.rangeEl.hidden = true;
+    this.lane.append(this.rangeEl, this.head, this.box);
     this.scroll.append(this.lane);
     this.root.append(head, this.scroll);
 
@@ -182,8 +188,9 @@ export class Timeline extends EventTarget {
       e.preventDefault();
       const el = e.target.closest('.tl-clip');
       if (el && !this.sel.has(el.dataset.id)) this.setSelection([el.dataset.id]);
-      this.dispatchEvent(new CustomEvent('menu', { detail: { x: e.clientX, y: e.clientY, t: this.timeAt(e), onClip: !!el } }));
+      this.dispatchEvent(new CustomEvent('menu', { detail: { x: e.clientX, y: e.clientY, t: this.timeAt(e), onClip: !!el, onRuler: !!e.target.closest('.tl-ruler, .tl-range') } }));
     });
+    this.scroll.addEventListener('scroll', () => this.onScroll(), { passive: true });
     this.scroll.addEventListener('wheel', e => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
@@ -231,15 +238,47 @@ export class Timeline extends EventTarget {
     const min = Math.max(2, (this.scroll.clientWidth - 20) / Math.max(1, this.length()));
     if (x == null) x = t * this.pps - this.scroll.scrollLeft;
     this.pps = Math.max(min, Math.min(1500, pps));
-    this.render();
+    // erst Breite und Rollposition, dann zeichnen – gezeichnet wird nur, was zu sehen ist
+    this.lane.style.width = `${this.length() * this.pps}px`;
     this.scroll.scrollLeft = t * this.pps - x;
+    this.render();
     this.dispatchEvent(new Event('zoom'));
   }
   fit() { this.zoom((this.scroll.clientWidth - 20) / Math.max(1, this.length()), 0, 0); }
   length() { return Math.max(this.end(), this.minLength ?? 0) + 2; }
 
+  /**
+   * Sichtfenster in Pixeln der Spur: eine Bildschirmbreite Vorrat links und rechts,
+   * in Schritten einer Bildschirmbreite – beim Rollen wird erst neu gezeichnet,
+   * wenn das Fenster weiterspringt.
+   */
+  viewWindow() {
+    const w = Math.max(400, this.scroll.clientWidth || 1200), k = Math.floor(this.scroll.scrollLeft / w);
+    return { x0: (k - 1) * w, x1: (k + 3) * w, key: `${k}|${w}|${this.pps}` };
+  }
+  onScroll() {
+    if (this.scrollRaf) return;
+    this.scrollRaf = requestAnimationFrame(() => {
+      this.scrollRaf = 0;
+      if (this.viewWindow().key !== this.view?.key) this.render(); else this.stickLabels();
+    });
+  }
+  /** Namen langer Clips (Video, Musik) bleiben am linken Rand sichtbar, wenn der Anfang aus dem Bild ist. */
+  stickLabels() {
+    const x = this.scroll.scrollLeft;
+    for (const [id, el] of this.els) {
+      const l = el.firstElementChild?.classList.contains('tl-label') ? el.firstElementChild : el.querySelector(':scope > .tl-label');
+      if (!l) continue;
+      const c = this.get(id); if (!c) continue;
+      const left = c.at * this.pps, w = c.len * this.pps;
+      const d = Math.max(0, Math.min(x - left, w - l.offsetWidth));
+      l.style.transform = d > 0 ? `translateX(${d}px)` : '';
+    }
+  }
+
   render() {
     this.lane.style.width = `${this.length() * this.pps}px`;
+    this.view = this.viewWindow();
     this.renderRuler();
     const live = new Set();
     for (const c of this.clips) {
@@ -258,7 +297,30 @@ export class Timeline extends EventTarget {
       this.paintClip(el, c);
     }
     for (const [id, el] of this.els) if (!live.has(id)) { el.remove(); this.els.delete(id); }
+    this.stickLabels();
+    this.renderRange();
     this.setPlayhead(this.playhead);
+  }
+
+  /** Ausgabebereich setzen (null = keiner); a und b werden geordnet. */
+  setRange(a, b) {
+    if (a == null || b == null || Math.abs(b - a) < MIN_LEN) this.range = null;
+    else this.range = { a: Math.max(0, Math.min(a, b)), b: Math.max(a, b) };
+    this.renderRange();
+    this.dispatchEvent(new Event('range'));
+  }
+  /** Eine Marke setzen; die andere bleibt (fehlt sie: Anfang bzw. Ende der Zeitleiste). */
+  setMark(which, t) {
+    const r = this.range ?? { a: 0, b: Math.max(this.end(), t) };
+    if (which === 'a') this.setRange(t, t < r.b ? r.b : Math.max(this.end(), t + 1));
+    else this.setRange(t > r.a ? r.a : 0, t);
+  }
+  renderRange() {
+    const r = this.range;
+    this.rangeEl.hidden = !r;
+    if (!r) return;
+    this.rangeEl.style.left = `${r.a * this.pps}px`;
+    this.rangeEl.style.width = `${(r.b - r.a) * this.pps}px`;
   }
 
   paintClip(el, c) {
@@ -267,14 +329,19 @@ export class Timeline extends EventTarget {
     el.dataset.type = c.type;
     el.classList.toggle('muted', !!c.muted);
     el.classList.toggle('selected', this.sel.has(c.id));
-    const key = [c.type, c.src, c.len, c.speed, c.reverse, c.fadeIn, c.fadeOut, c.extIn, c.extOut, c.gain, this.pps, c.label, c.take?.rev ?? 0].join('|');
+    // sichtbarer Teil des Clips (Pixel ab Clipanfang); nur der wird gezeichnet
+    const w0 = c.len * this.pps, left = c.at * this.pps;
+    const vis = [Math.max(0, Math.floor(this.view.x0 - left)), Math.min(Math.ceil(w0), Math.ceil(this.view.x1 - left))];
+    if (vis[1] <= vis[0]) vis[0] = vis[1] = 0;
+    const key = [c.type, c.src, c.len, c.speed, c.reverse, c.fadeIn, c.fadeOut, c.extIn, c.extOut, c.gain, this.pps, c.label, c.take?.rev ?? 0, vis].join('|');
     if (el.dataset.key === key) return;
     el.dataset.key = key;
     el.replaceChildren();
+    if (vis[1] === 0) return;                      // ganz außer Sicht
     const data = this.samples(c);
-    if (data) el.append(this.wave(c, data));
-    if (c.type === 'take') el.append(this.words(c));
-    else if ((c.type === 'orig' || c.type === 'snip') && this.srcWords.length) el.append(this.sourceWords(c));
+    if (data) el.append(this.wave(c, data, vis));
+    if (c.type === 'take') el.append(this.words(c, vis));
+    else if ((c.type === 'orig' || c.type === 'snip') && this.srcWords.length) el.append(this.sourceWords(c, vis));
     else {
       const label = document.createElement('span');
       label.className = 'tl-label';
@@ -295,7 +362,7 @@ export class Timeline extends EventTarget {
   }
 
   /** Wörter und Silben eines geschnittenen Satzes, eingefärbt nach Güte. */
-  words(c) {
+  words(c, vis = [0, Infinity]) {
     const box = document.createElement('div');
     box.className = 'tl-words';
     const toX = s => (timeOf(c, s) - c.at) * this.pps;
@@ -303,7 +370,7 @@ export class Timeline extends EventTarget {
       let a = toX(w.start), b = toX(w.end);
       if (a > b) [a, b] = [b, a];
       a = Math.max(0, a); b = Math.min(c.len * this.pps, b);
-      if (b - a < 1) return;
+      if (b - a < 1 || b < vis[0] || a > vis[1]) return;
       const span = document.createElement('span');
       span.className = `tl-word q ${w.quality}`;
       span.dataset.wi = wi;
@@ -324,10 +391,12 @@ export class Timeline extends EventTarget {
   }
 
   /** Was in einem Stück Originalstimme gesagt wird, an seiner Stelle im Clip. */
-  sourceWords(c) {
+  sourceWords(c, vis = null) {
     const box = document.createElement('div');
     box.className = 'tl-words tl-src';
-    const a = Math.min(sourceAt(c, c.at), sourceAt(c, endOf(c))), b = Math.max(sourceAt(c, c.at), sourceAt(c, endOf(c)));
+    // nur der sichtbare Teil des Clips (in Quellzeit)
+    const t0 = vis ? c.at + vis[0] / this.pps : c.at, t1 = vis ? c.at + vis[1] / this.pps : endOf(c);
+    const a = Math.min(sourceAt(c, t0), sourceAt(c, t1)), b = Math.max(sourceAt(c, t0), sourceAt(c, t1));
     // erstes Wort, das in den Bereich reicht (binäre Suche)
     let lo = 0, hi = this.srcWords.length;
     while (lo < hi) { const m = (lo + hi) >> 1; if (this.srcWords[m].e <= a) lo = m + 1; else hi = m; }
@@ -356,25 +425,31 @@ export class Timeline extends EventTarget {
   }
 
   /** Wellenform eines Clips als Canvas (Spitzenwerte pro Pixelspalte), mit Tempo und Richtung. */
-  wave(c, data) {
+  wave(c, data, vis = [0, c.len * this.pps]) {
     const cv = document.createElement('canvas');
     cv.className = 'tl-wave';
-    const w = Math.max(1, Math.min(8000, Math.round(c.len * this.pps))), h = 48;
+    // Leinwand nur über dem sichtbaren Teil: eine Spalte je Pixel
+    const px = Math.max(1, vis[1] - vis[0]), w = Math.max(1, Math.min(8000, Math.round(px))), h = 48;
     cv.width = w; cv.height = h;
+    cv.style.left = `${vis[0]}px`; cv.style.width = `${px}px`;
+    const ta = c.at + vis[0] / this.pps, tlen = px / this.pps;
     const g = cv.getContext('2d');
     g.fillStyle = getComputedStyle(this.root).getPropertyValue('--wave') || '#888';
     const SR = 48000, cols = [], P = peaks(data), B = 256;
     let peak = 1e-3;
     for (let x = 0; x < w; x++) {
-      const s0 = sourceAt(c, c.at + (x / w) * c.len) * SR, s1 = sourceAt(c, c.at + ((x + 1) / w) * c.len) * SR;
+      const s0 = sourceAt(c, ta + (x / w) * tlen) * SR, s1 = sourceAt(c, ta + ((x + 1) / w) * tlen) * SR;
       const a = Math.max(0, Math.floor(Math.min(s0, s1))), b = Math.min(data.length, Math.ceil(Math.max(s0, s1)));
       let lo = 0, hi = 0;
       if (b - a >= 2 * B) {
         for (let k = Math.ceil(a / B); k < Math.floor(b / B); k++) { if (P.lo[k] < lo) lo = P.lo[k]; if (P.hi[k] > hi) hi = P.hi[k]; }
       } else for (let i = a; i < b; i++) { const v = data[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
       cols.push([lo, hi]);
-      peak = Math.max(peak, hi, -lo);
     }
+    // Maßstab über den ganzen Clip (nicht nur den sichtbaren Teil), sonst springt er beim Rollen
+    const q0 = Math.max(0, Math.floor(Math.min(sourceAt(c, c.at), sourceAt(c, endOf(c))) * SR / B));
+    const q1 = Math.min(P.hi.length, Math.ceil(Math.max(sourceAt(c, c.at), sourceAt(c, endOf(c))) * SR / B));
+    for (let k = q0; k < q1; k++) peak = Math.max(peak, P.hi[k], -P.lo[k]);
     peak = Math.min(1, peak * 1.05) / Math.max(0.05, c.gain ?? 1);
     cols.forEach(([lo, hi], x) => {
       const y0 = h / 2 - Math.min(1, hi / peak) * h / 2, y1 = h / 2 - Math.max(-1, lo / peak) * h / 2;
@@ -387,7 +462,8 @@ export class Timeline extends EventTarget {
     const steps = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120];
     const step = steps.find(s => s * this.pps >= 64) ?? 300;
     const n = Math.ceil(this.length() / step), html = [];
-    for (let i = 0; i <= n; i++) html.push(`<span style="left:${i * step * this.pps}px">${clock(i * step, step < 1)}</span>`);
+    const i0 = Math.max(0, Math.floor(this.view.x0 / (step * this.pps))), i1 = Math.min(n, Math.ceil(this.view.x1 / (step * this.pps)));
+    for (let i = i0; i <= i1; i++) html.push(`<span style="left:${i * step * this.pps}px">${clock(i * step, step < 1)}</span>`);
     this.ruler.innerHTML = html.join('');
   }
 
@@ -436,7 +512,17 @@ export class Timeline extends EventTarget {
     if (e.button !== 0) return;
     const clipEl = e.target.closest('.tl-clip');
     const t0 = this.timeAt(e);
-    if (e.target.closest('.tl-ruler')) {
+    const loc = e.target.closest('.tl-loc')?.dataset.loc;
+    if (loc) {
+      // Marke ziehen (rastet an Clip-Rändern und am Abspielkopf ein)
+      const other = loc === 'a' ? this.range.b : this.range.a;
+      this.drag(e, ev => {
+        const t = Math.max(0, this.snap(this.timeAt(ev), new Set()));
+        this.setRange(loc === 'a' ? Math.min(t, other - MIN_LEN) : other, loc === 'a' ? other : Math.max(t, other + MIN_LEN));
+      });
+      return;
+    }
+    if (e.target.closest('.tl-ruler, .tl-range')) {
       const scrub = ev => { this.setPlayhead(this.timeAt(ev)); this.dispatchEvent(new Event('seek')); };
       scrub(e);
       this.drag(e, scrub);
@@ -463,11 +549,13 @@ export class Timeline extends EventTarget {
       : x < EDGE && r.width > 3 * EDGE ? 'left' : x > r.width - EDGE && r.width > 3 * EDGE ? 'right' : 'move';
     const before = this.snapshot();
     const copy = e.altKey || ctrl;                           // Kopie verschieben
-    // Gezogen wird die ganze Auswahl (samt Lippen-Schnipseln der Takes)
-    const group = mode === 'move' ? this.clips.filter(y => this.sel.has(y.id) || this.sel.has(y.ref)) : [c];
+    // Gezogen wird die ganze Auswahl (samt Lippen-Schnipseln der Takes); getrimmt
+    // wird derselbe Rand aller gewählten Clips, alle um gleich viel
+    const trim = mode === 'left' || mode === 'right';
+    const group = mode === 'move' ? this.clips.filter(y => this.sel.has(y.id) || this.sel.has(y.ref))
+      : trim ? this.clips.filter(y => y.id === c.id || this.sel.has(y.id)) : [c];
     const orig = new Map(group.map(y => [y.id, { ...y }]));
     const ids = new Set(group.map(y => y.id));
-    const srcLen = this.sourceLength(c);
     const row0 = this.rowAt(e);
     let moved = false, last = e;
 
@@ -476,7 +564,7 @@ export class Timeline extends EventTarget {
       const dt = this.timeAt(ev) - t0;
       if (!moved && Math.abs(dt * this.pps) < 3 && this.rowAt(ev) === row0) return;
       moved = true;
-      const o = orig.get(c.id), sp = speedOf(o);
+      const o = orig.get(c.id);
       if (mode === 'move') {
         // Zeit: am gegriffenen Clip einrasten (Anfang oder Ende)
         let at = this.snap(o.at + dt, ids);
@@ -495,17 +583,15 @@ export class Timeline extends EventTarget {
           y.at = oy.at + shift;
           y.track = canMove && !y.ref ? same[same.indexOf(this.track(oy.track)) + di].id : oy.track;
         }
-      } else if (mode === 'left' || mode === 'right') {
-        // Quelle reicht so weit, wie das Material da ist (rückwärts: spiegelverkehrt)
-        const roomL = (o.reverse ? srcLen - (o.src + o.len * sp) : o.src) / sp;
-        const roomR = (o.reverse ? o.src : srcLen - (o.src + o.len * sp)) / sp;
-        const full = { ...o, at: o.at - roomL, len: o.len + roomL + roomR, src: o.reverse ? o.src - roomR * sp : o.src - roomL * sp };
-        let a = o.at, b = endOf(o);
-        if (mode === 'left') a = Math.min(b - MIN_LEN, Math.max(this.snap(o.at + dt, ids), o.at - roomL, 0));
-        else b = Math.max(a + MIN_LEN, Math.min(this.snap(b + dt, ids), endOf(o) + roomR));
-        Object.assign(c, sub(full, a, b, () => c.id));
-        c.fadeIn = mode === 'left' ? Math.min(o.fadeIn ?? 0, c.len / 2) : o.fadeIn; c.extIn = o.extIn;
-        c.fadeOut = mode === 'right' ? Math.min(o.fadeOut ?? 0, c.len / 2) : o.fadeOut; c.extOut = o.extOut;
+      } else if (trim) {
+        // Am gegriffenen Rand einrasten, dann um dasselbe Stück an allen Clips –
+        // begrenzt durch den Clip, der am wenigsten Spielraum hat
+        let d = mode === 'left' ? this.snap(o.at + dt, ids) - o.at : this.snap(endOf(o) + dt, ids) - endOf(o);
+        for (const y of group) {
+          const r = trimRoom(orig.get(y.id), this.sourceLength(y));
+          d = mode === 'left' ? Math.min(Math.max(d, r.minL), r.maxL) : Math.min(Math.max(d, r.minR), r.maxR);
+        }
+        for (const y of group) Object.assign(y, trimmed(orig.get(y.id), this.sourceLength(y), mode, d));
       } else if (mode === 'fadein') {
         c.fadeIn = Math.max(0, Math.min(o.len / 2, (o.fadeIn ?? 0) - (o.extIn ?? 0) + dt)) + (o.extIn ?? 0);
       } else if (mode === 'fadeout') {
@@ -554,6 +640,12 @@ export class Timeline extends EventTarget {
         this.clips = this.clips.filter(y => !ids.has(y.id)).concat(group.map(y => ({ ...orig.get(y.id) })));
         const added = this.paste(moved, Math.min(...moved.map(y => y.at)));
         this.setSelection(added.filter(y => !y.ref).map(y => y.id));
+      } else if (trim) {
+        // Getrimmte Ränder überschreiben, was darunter liegt – auch andere gewählte Clips
+        for (const id of ids) { const y = this.get(id); if (y) this.clear(y.track, y.at, y.len, y.id); }
+        this.changed();
+        this.dispatchEvent(new CustomEvent('trimmed', { detail: [...ids] }));
+        return;
       } else {
         // Was die bewegten Clips jetzt überdecken, weicht
         for (const y of group) this.clear(y.track, y.at, y.len, ids);
@@ -608,6 +700,27 @@ export class Timeline extends EventTarget {
     target.addEventListener('pointerup', done);
     target.addEventListener('pointercancel', done);
   }
+}
+
+/**
+ * Wie weit sich die Ränder eines Clips verschieben lassen (s auf der Zeitleiste):
+ * so weit das Material reicht (rückwärts spiegelverkehrt), nicht vor 0, nicht kürzer als MIN_LEN.
+ */
+function trimRoom(o, srcLen) {
+  const sp = speedOf(o);
+  const roomL = (o.reverse ? srcLen - (o.src + o.len * sp) : o.src) / sp;
+  const roomR = (o.reverse ? o.src : srcLen - (o.src + o.len * sp)) / sp;
+  return { minL: -Math.min(roomL, o.at), maxL: o.len - MIN_LEN, minR: -(o.len - MIN_LEN), maxR: roomR };
+}
+/** Clip o mit um d verschobenem linken oder rechten Rand. */
+function trimmed(o, srcLen, mode, d) {
+  const sp = speedOf(o), { minL, maxR } = trimRoom(o, srcLen);
+  const roomL = -minL, full = { ...o, at: o.at - roomL, len: o.len + roomL + maxR, src: o.reverse ? o.src - maxR * sp : o.src - roomL * sp };
+  const a = mode === 'left' ? o.at + d : o.at, b = mode === 'right' ? endOf(o) + d : endOf(o);
+  const n = sub(full, a, b, () => o.id);
+  return { ...n, id: o.id,
+    fadeIn: mode === 'left' ? Math.min(o.fadeIn ?? 0, n.len / 2) : o.fadeIn, extIn: o.extIn,
+    fadeOut: mode === 'right' ? Math.min(o.fadeOut ?? 0, n.len / 2) : o.fadeOut, extOut: o.extOut };
 }
 
 /** Spitzenwerte je 256 Samples, einmal pro Tonquelle berechnet. */

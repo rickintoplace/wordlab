@@ -121,6 +121,11 @@
             <div class="sc-export">
               <button class="sc-tbtn sc-texport" id="t-export" type="button" aria-haspopup="true" aria-expanded="false"><span data-icon="download" data-icon-size="15px"></span> Export</button>
               <div class="sc-menu" id="export-menu" hidden>
+                <div class="sc-scope" role="radiogroup" aria-label="What to export">
+                  <button type="button" role="radio" data-scope="all" aria-checked="true">Everything</button>
+                  <button type="button" role="radio" data-scope="range" aria-checked="false" id="export-range">Range</button>
+                </div>
+                <small class="sc-scope-hint" id="export-range-hint">Mark a range with I and O, or right-click the ruler.</small>
                 <button type="button" data-export="video">Video <small id="export-video-hint">MP4, frame by frame</small></button>
                 <button type="button" data-export="wav">Sound only (WAV)</button>
               </div>
@@ -152,7 +157,7 @@
                   <button type="button" class="sc-go" id="ideas-go"><span data-icon="sparkles" data-icon-size="14px"></span> Get ideas</button>
                   <span class="sc-note" id="ideas-status"></span>
                 </div>
-                <p class="sc-note">A language model writes sentences from the words in this video; Slinky-Cut cuts each one and keeps the best-sounding. This sends the transcript (text only, never the video) to OpenRouter and the model you choose. Your key stays in this browser. Get one at openrouter.ai/keys.</p>
+                <p class="sc-note">A language model writes sentences from the words in this video; Slinky-Cut cuts each one and keeps the funniest that cut cleanly. This sends the transcript (text only, never the video) to OpenRouter and the model you choose. Your key stays in this browser. Get one at openrouter.ai/keys.</p>
               </div>
               <ol class="sc-bin" id="bin" hidden aria-label="Your cut sentences"></ol>
             </form>
@@ -169,7 +174,7 @@
       </div>
 
       <div class="sc-timeline" id="timeline"></div>
-      <p class="sc-keys">Space play · double-click empty space: play from there · drag: select several · Shift/Ctrl-click: add · Alt-drag: copy · S split · X crossfade · R backwards · M mute · Ctrl+C/X/V/D · Del (Shift: close gap) · Alt+←/→ nudge · Shift+Z fit · right-click for more</p>
+      <p class="sc-keys">Space play · double-click empty space: play from there · drag: select several · Shift/Ctrl-click: add · Alt-drag: copy · S split · X crossfade · R backwards · M mute · L lips · Ctrl+C/X/V/D · Del (Shift: close gap) · Alt+←/→ nudge · I / O range start / end (Alt+X clears) · Shift+Z fit · right-click for more</p>
       <div class="sc-pop" id="pop" hidden></div>
       <div class="sc-ctx" id="ctx" role="menu" hidden></div>
 

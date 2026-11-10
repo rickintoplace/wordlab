@@ -50,9 +50,32 @@ export async function pronounce(word, lang) {
 }
 
 export function pronounceSync(word, lang, lex) {
+  const r = pronounceRaw(word, lang, lex);
+  return lang === 'de' ? { ...r, toks: vocalizeEr(r.toks) } : r;
+}
+
+// „-er“ ohne folgenden Vokal spricht man [ɐ] (Wasser, immer, Jägerin bleibt [ər]):
+// Manche Wörterbucheinträge schreiben es als „ə r“, gehört wird es so nie.
+function vocalizeEr(toks) {
+  const out = [];
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i], n = toks[i + 1], nn = toks[i + 2];
+    if (t.t === 'ə' && n && /^(r|ʁ|ɾ)$/.test(n.t) && !(nn && isVowel(nn.t))) { out.push({ ...t, t: 'ɐ' }); i++; continue; }
+    out.push(t);
+  }
+  return out;
+}
+
+function pronounceRaw(word, lang, lex) {
   const w = clean(word, lang);
   if (!w) return { toks: [], source: 'rules' };
-  if (lang === 'en' && EN_WEAK[w]) return { toks: decode(EN_WEAK[w]), source: 'lexicon' };
+  // Ziffern so, wie man sie spricht: 66 → sechs und sechzig
+  if (/^\d{1,9}$/.test(w)) {
+    const parts = numberWords(Number(w), lang).map(p => pronounceRaw(p, lang, lex));
+    return { toks: parts.flatMap((p, i) => p.toks.map(x => ({ ...x, stress: i === parts.length - 1 ? x.stress : x.stress ? 2 : 0 }))),
+      source: parts.every(p => p.source === 'lexicon') ? 'lexicon' : 'compound' };
+  }
+  if (lang === 'en' && EN_WEAK[w])return { toks: decode(EN_WEAK[w]), source: 'lexicon' };
   if (lex.has(w)) return { toks: decode(lex.get(w)), source: 'lexicon' };
   if (lang === 'de') {
     const parts = splitCompound(w, lex);
@@ -216,5 +239,45 @@ export function rulesEn(w) {
   }
   const v = out.findIndex(x => isVowel(x.t));
   if (v >= 0) out[v].stress = 1;
+  return out;
+}
+
+// ---------- Zahlen ----------
+const DE_ONES = ['null', 'eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf',
+  'dreizehn', 'vierzehn', 'fünfzehn', 'sechzehn', 'siebzehn', 'achtzehn', 'neunzehn'];
+const DE_TENS = ['', '', 'zwanzig', 'dreißig', 'vierzig', 'fünfzig', 'sechzig', 'siebzig', 'achtzig', 'neunzig'];
+const EN_ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+  'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+const EN_TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+
+/** Zahl als einzelne Wörter, wie gesprochen (Jahre 1100–1999 als „neunzehnhundert …“). */
+export function numberWords(n, lang) {
+  const de = lang === 'de';
+  const below100 = (x, last) => {
+    if (x < 20) return [de && x === 1 && !last ? 'ein' : (de ? DE_ONES : EN_ONES)[x]];
+    const t = Math.floor(x / 10), o = x % 10;
+    if (!o) return [(de ? DE_TENS : EN_TENS)[t]];
+    return de ? [o === 1 ? 'ein' : DE_ONES[o], 'und', DE_TENS[t]] : [EN_TENS[t], EN_ONES[o]];
+  };
+  const below1000 = (x, last = true) => {
+    const h = Math.floor(x / 100), r = x % 100, out = [];
+    if (h) out.push(...(de ? [h === 1 ? 'ein' : DE_ONES[h], 'hundert'] : [EN_ONES[h], 'hundred']));
+    if (r || !h) out.push(...(h && !de ? ['and'] : []), ...below100(r, last));
+    return out;
+  };
+  if (n >= 1100 && n <= 1999) {
+    const hi = Math.floor(n / 100), lo = n % 100;
+    const rest = !lo ? [] : !de && lo < 10 ? ['oh', EN_ONES[lo]] : below100(lo, true);
+    return [...below100(hi, false), ...(de || !lo ? [de ? 'hundert' : 'hundred'] : []), ...rest];
+  }
+  const out = [];
+  for (const [size, de1, en1] of [[1e6, 'millionen', 'million'], [1e3, 'tausend', 'thousand']]) {
+    const k = Math.floor(n / size);
+    if (!k) continue;
+    if (de && size === 1e6) out.push(...(k === 1 ? ['eine', 'million'] : [...below1000(k, false), de1]));
+    else out.push(...below1000(k, false), de ? de1 : en1);
+    n %= size;
+  }
+  if (n || !out.length) out.push(...below1000(n));
   return out;
 }

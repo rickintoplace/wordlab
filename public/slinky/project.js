@@ -167,6 +167,37 @@ export function toggleCrossfades(clips, ids, tracks) {
   return true;
 }
 
+/**
+ * Welcher Teil des neuen Satzes entspricht dem sichtbaren Teil [a, b] des alten?
+ * Wörter vor und nach der Änderung sind dieselben (gleiche Zahl von vorn und
+ * hinten); die Ränder bleiben am gleichen Wort, mit demselben Abstand dazu.
+ */
+export function keptSpan(oldW, newW, a, b, newLen) {
+  const full = [0, newLen];
+  if (!oldW.length || !newW.length) return full;
+  const tol = 0.03;
+  if (a <= Math.min(oldW[0].start, oldW[0].end) + tol && b >= Math.max(oldW.at(-1).start, oldW.at(-1).end) - tol) return full;
+  const lo = w => Math.min(w.start, w.end), hi = w => Math.max(w.start, w.end);
+  const i0 = oldW.findIndex(w => hi(w) > a + tol);
+  const i1 = oldW.findLastIndex(w => lo(w) < b - tol);
+  if (i0 < 0 || i1 < i0) return full;
+  // gleich gebliebene Wörter vorn (p) und hinten (q)
+  const same = (x, y) => x.w === y.w;
+  let p = 0;
+  while (p < oldW.length && p < newW.length && same(oldW[p], newW[p])) p++;
+  let q = 0;
+  while (q < oldW.length - p && q < newW.length - p && same(oldW[oldW.length - 1 - q], newW[newW.length - 1 - q])) q++;
+  const d = newW.length - oldW.length;
+  // alter Index → neuer; im geänderten Bereich: dessen Anfang bzw. Ende
+  const mapStart = i => (i < p ? i : i >= oldW.length - q ? i + d : p);
+  const mapEnd = i => (i < p ? i : i >= oldW.length - q ? i + d : newW.length - q - 1);
+  const j0 = mapStart(i0), j1 = mapEnd(i1);
+  if (j0 < 0 || j1 < j0 || j1 >= newW.length) return full;
+  const s = Math.max(0, lo(newW[j0]) + (a - lo(oldW[i0])));
+  const e = Math.min(newLen, hi(newW[j1]) + (b - hi(oldW[i1])));
+  return e - s > 0.02 ? [s, e] : full;
+}
+
 /** Projekt aus älteren Fassungen auf den aktuellen Stand bringen. */
 export function migrate(saved) {
   const tracks = saved.tracks ?? defaultTracks();

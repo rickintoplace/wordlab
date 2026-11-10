@@ -4,3 +4,4 @@ build/cache/
 spike/media/
 spike/out/
 spike/models/
+.env

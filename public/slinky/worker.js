@@ -9,8 +9,8 @@
 
 import { parseLexicon, pronounceSync } from './g2p.js';
 import { alignWords } from './align.js';
-import { buildSource, targetPhones, select, plan, render, wholeWords, wordKey, syllableBounds } from './engine.js';
-import { isVowel, soundClass } from './phones.js';
+import { buildSource, targetPhones, select, plan, render, wholeWords, wordKey, syllableBounds, splitWords } from './engine.js';
+import { isVowel, soundClass, canon } from './phones.js';
 import * as cache from './cache.js';
 
 const post = (msg, transfer) => self.postMessage(msg, transfer ?? []);
@@ -41,7 +41,7 @@ self.onmessage = async ({ data: m }) => {
 
 // Ändert sich das Verorten (Lexikon, Grenzen), wird es aus den gespeicherten
 // Modell-Ergebnissen neu gerechnet – ohne die langsamen Stufen zu wiederholen.
-const ALIGN_VERSION = 3;   // 3: Lexikon wählt die Standardform (wir → [viːɐ̯], nicht [mɐ])
+const ALIGN_VERSION = 4;   // 3: Lexikon wählt die Standardform (wir → [viːɐ̯], nicht [mɐ]); 4: Zahlen werden ausgesprochen
 
 const lexicon = lang => fetch(`/data/slinky/lex-${lang}.txt?v=${ALIGN_VERSION}`).then(r => r.text()).then(parseLexicon);
 
@@ -106,7 +106,7 @@ function cut(text, speaker, force = {}) {
   const { constrain, instances } = wholeWords(src, tgt, only);
   const phonesOf = wi => tgt.phones.map((p, i) => (p.w === wi ? i : -1)).filter(i => i >= 0);
   // Gleicher Laut oder wenigstens gleiche Klasse – sonst klänge die Alternative nach einem anderen Wort
-  const fits = (p, T) => p.real === T.t || p.t === T.t || p.cls === T.cls;
+  const fits = (p, T) => canon(p.real) === canon(T.t) || p.t === T.t || p.cls === T.cls;
   for (const [k, f] of Object.entries(F.words)) {
     const wi = Number(k), idx = phonesOf(wi);
     if (typeof f === 'number' && f >= 0) {
@@ -130,10 +130,10 @@ function cut(text, speaker, force = {}) {
     const T = tgt.phones[ti], b = new Set(ban);
     if (T) constrain[ti] = p => !b.has(p.i) && fits(p, T) && p.e - p.s >= 0.015 && p.lp > -4;
   }
-  const { chosen } = select(src, tgt, 250, constrain, 'all', only);
+  const { chosen, stepCost } = select(src, tgt, 250, constrain, 'all', only);
   const segs = plan(src, tgt, chosen);
   const audio = render(src, segs);
-  return { tgt, chosen, segs, audio, instances, force: F };
+  return { tgt, chosen, segs, audio, instances, force: F, stepCost };
 }
 
 /** Wo im Quellwort ein Stück liegt: ganz, Anfang, Ende oder Mitte. */
@@ -152,7 +152,7 @@ function syllablesOf(tgt, wi) {
 }
 
 /** Ergebnis eines Schnitts für die Oberfläche: Wörter und Silben mit Güte und Lage im Ton. */
-function describe({ tgt, chosen, segs, instances }) {
+function describe({ tgt, chosen, segs, instances, stepCost = [] }) {
   const { src } = current;
   // Ausgabeposition jeder Lauthälfte (Schritt st), Anfang und Ende
   const outAt = new Map(), segOf = new Map();
@@ -165,6 +165,8 @@ function describe({ tgt, chosen, segs, instances }) {
   const clean = w => w.replace(/[^\p{L}\p{N}'-]/gu, '');
   const words = tgt.words.map((w, wi) => {
     const steps = tgt.phones.flatMap((p, i) => (p.w === wi ? [2 * i, 2 * i + 1] : []));
+    // ohne Laute (sollte nicht vorkommen): nichts zu schneiden, nichts zu zeigen
+    if (!steps.length) return { w, quality: 'sounds', pieces: 0, source: tgt.wordInfo[wi].source, start: 0, end: 0, used: [], from: [], spanned: [], at: 0, hasWhole: false, syls: [] };
     let pieces = 0, prev = null;
     const used = new Set(), from = [];
     for (const st of steps) {
@@ -188,7 +190,9 @@ function describe({ tgt, chosen, segs, instances }) {
         parts: parts.map(({ text, word, firstP, lastP }) => ({ text, word, at: firstP.s, pos: posIn(firstP, lastP) })) };
     });
     const spanned = [...new Set([...used].sort((x, y) => x - y).map(i => src.phones[i].w))].map(k => clean(src.words[k].w));
-    return { w, quality, pieces, source: tgt.wordInfo[wi].source, start: outAt.get(2 * ti0) ?? 0, end: endAt(ti1) ?? 0,
+    // Mittlere Kosten je Halblaut: wie gut das Wort zusammenpasst (0 = am Stück aus der Quelle)
+    const cost = steps.reduce((a, st) => a + (stepCost[st] ?? 0), 0) / steps.length;
+    return { w, quality, pieces, cost: +cost.toFixed(2), source: tgt.wordInfo[wi].source, start: outAt.get(2 * ti0) ?? 0, end: endAt(ti1) ?? 0,
       used: [...used], from: [...new Set(from)], spanned, at: src.phones[Math.min(...used)].s, hasWhole: !!instances[wi]?.length, syls };
   });
   const pieces = segs.map(s => ({ start: s.start, end: s.end, at: (s.o0 ?? 0) / SR, len: ((s.o1 ?? s.o0) - s.o0) / SR }));
@@ -229,8 +233,8 @@ function rewrite({ id, text, speaker, force, wi, replacement }) {
   const F = normForce(force);
   const instOf = f => Object.fromEntries(Object.entries(f.words).filter(([, v]) => typeof v === 'number' && v >= 0));
   const old = targetPhones(text, lang, lex, src, { inst: instOf(F), pauses: F.pauses });
-  const words = text.split(/\s+/).filter(Boolean);
-  const rep = replacement.trim().split(/\s+/).filter(Boolean);
+  const words = splitWords(text);
+  const rep = splitWords(replacement.trim());
   // Satzzeichen am Ende des alten Worts bleiben, wenn das neue keins hat
   const punct = words[wi]?.match(/[.,!?;:…]+["“”»]*$/)?.[0];
   if (rep.length && punct && !/[.,!?;:…]$/.test(rep.at(-1))) rep[rep.length - 1] += punct;

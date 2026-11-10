@@ -5,9 +5,10 @@
 import { paintIcons, icon } from '../icons.js';
 import { encodeWav } from './engine.js';
 import { Timeline, clock, reserveIds } from './timeline.js';
-import { endOf, speedOf, srcSpan, timeOf, toggleCrossfades, migrate } from './project.js';
+import { endOf, speedOf, srcSpan, timeOf, toggleCrossfades, migrate, keptSpan } from './project.js';
 import { Player } from './player.js';
 import * as cache from './cache.js';
+import { DEFAULT_MODEL, generateIdeas, buildCost, pickIdeas } from './ideas.js';
 
 paintIcons();
 const $ = id => document.getElementById(id);
@@ -244,6 +245,7 @@ async function ready(m) {
     if (m.music) tl.add({ track: 'a2', type: 'music', at: 0, len: Math.min(duration, m.music.length / SR), src: 0, label: 'Music' });
   }
   tl.build();
+  if (saved?.range) { tl.setRange(saved.range.a, saved.range.b); exportScope = 'range'; }
   requestAnimationFrame(() => { tl.fit(); syncZoomSlider(); player.sync(0); });
 
   tl.addEventListener('select', e => inspect(e.detail));
@@ -257,6 +259,13 @@ async function ready(m) {
     save(); inspect(tl.selection());
   });
   tl.addEventListener('zoom', syncZoomSlider);
+  // Getrimmt: Lippen neu anlegen (gehört zum selben Rückgängig-Schritt)
+  tl.addEventListener('trimmed', e => {
+    const cs = e.detail.map(id => tl.get(id)).filter(c => c && !c.ref && hasLips(c));
+    if (cs.length) { lips(cs, true); tl.history.pop(); }
+  });
+  // Wer einen Bereich markiert, will meist genau den ausgeben
+  tl.addEventListener('range', () => { exportScope = tl.range ? 'range' : 'all'; save(); syncExportScope(); });
   tl.addEventListener('playfrom', () => player.play(tl.playhead));
   tl.addEventListener('menu', e => contextMenu(e.detail));
   player.addEventListener('time', e => showTime(e.detail));
@@ -324,7 +333,7 @@ els.zoom.addEventListener('input', () => { const [a, b] = zoomRange(); S.tl.zoom
 let saveTimer = 0;
 function save() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => cache.put(`project|${key}`, { tracks: S.tl.tracks, clips: S.tl.clips, bin: S.bin }).catch(() => {}), 800);
+  saveTimer = setTimeout(() => cache.put(`project|${key}`, { tracks: S.tl.tracks, clips: S.tl.clips, bin: S.bin, range: S.tl.range }).catch(() => {}), 800);
 }
 
 /** Zielspur für neuen Ton: die Tonspur des gewählten Clips, sonst „Voice“. */
@@ -542,6 +551,8 @@ function lips(cs, on) {
   tl.changed();
 }
 const hasLips = c => S.tl.clips.some(x => x.ref === c.id);
+/** Ton aus der Stimme des Videos: Dazu gibt es Lippen. */
+const isVoiced = c => c.type === 'take' || c.type === 'snip' || c.type === 'orig';
 
 // ---------------------------------------------------------------- Inspektor
 function inspect(sel) {
@@ -612,10 +623,10 @@ function inspect(sel) {
   acts.className = 'sc-insp-acts';
   const btn = (label, fn, ic, title = '') => { const b = document.createElement('button'); b.type = 'button'; b.className = 'sc-act'; b.title = title; if (ic) b.append(icon(ic, { size: '14px' }), ' '); b.append(label); b.addEventListener('click', fn); acts.append(b); return b; };
   if (!many) btn('Listen', () => S.player.play(c.at, { until: endOf(c) }), 'play');
-  const voiced = sel.filter(x => x.type === 'take' || x.type === 'snip');
+  const voiced = sel.filter(isVoiced);
   if (voiced.length) {
     const on = voiced.every(hasLips);
-    btn(on ? 'Hide lips' : 'Show lips', () => lips(voiced, !on), 'film', 'Put the video of them saying it on top');
+    btn(on ? 'Hide lips' : 'Show lips', () => lips(voiced, !on), 'film', 'L · Put the video of them saying each piece on the Lips track');
   }
   if (!many && c.type === 'snip') {
     const row = document.createElement('div');
@@ -862,9 +873,11 @@ function replaceTake(c, o) {
   tl.commit();
   const hadLips = hasLips(c);
   const sp = speedOf(c);
+  // Zeigte der Clip nur einen Teil des Satzes (geteilt, getrimmt), bleibt es dieser Teil
+  const [s0, s1] = keptSpan(c.take.words, o.words, c.src, c.src + c.len * sp, o.audio.length / SR);
   c.take = { ...c.take, audio: o.audio, words: o.words, pieces: o.segs, force: o.force, rev: (c.take.rev ?? 0) + 1 };
   if (o.text) { c.take.text = o.text; c.label = o.text; }
-  c.src = 0; c.len = o.audio.length / SR / sp; c.fadeIn = c.extIn ?? 0; c.fadeOut = c.extOut ?? 0;
+  c.src = s0; c.len = (s1 - s0) / sp; c.fadeIn = c.extIn ?? 0; c.fadeOut = c.extOut ?? 0;
   tl.clear(c.track, c.at, c.len, c.id);
   tl.changed();
   if (hadLips) { tl.history.pop(); lips([c], true); }
@@ -977,6 +990,14 @@ const tools = {
     for (const c of cs) S.tl.clear(c.track, c.at, c.len, ids);
     S.tl.changed();
   },
+  lips: () => { const v = S.tl.selection().filter(isVoiced); if (v.length) lips(v, !v.every(hasLips)); },
+  markIn: () => S.tl.setMark('a', S.tl.playhead),
+  markOut: () => S.tl.setMark('b', S.tl.playhead),
+  clearRange: () => S.tl.setRange(null, null),
+  rangeFromSelection: () => {
+    const cs = S.tl.selection();
+    if (cs.length) S.tl.setRange(Math.min(...cs.map(c => c.at)), Math.max(...cs.map(endOf)));
+  },
   undo: () => S.tl.undo(),
   redo: () => S.tl.redo(),
   fit: () => { S.tl.fit(); syncZoomSlider(); },
@@ -989,7 +1010,8 @@ document.addEventListener('keydown', e => {
   if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
   const mod = e.ctrlKey || e.metaKey, k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   const map = mod ? { z: e.shiftKey ? 'redo' : 'undo', y: 'redo', d: 'dup', c: 'copy', x: 'cut', v: 'paste', a: 'selectAll' }
-    : { ' ': 'play', s: 'split', m: 'mute', x: 'xfade', r: 'reverse', Delete: 'del', Backspace: 'del' };
+    : { ' ': 'play', s: 'split', m: 'mute', x: 'xfade', r: 'reverse', l: 'lips', i: 'markIn', o: 'markOut', Delete: 'del', Backspace: 'del' };
+  if (k === 'x' && e.altKey && !mod) { e.preventDefault(); tools.clearRange(); return; }   // wie in Resolve
   const act = map[k];
   if (act && !(e.altKey && !mod)) {
     e.preventDefault();
@@ -1020,14 +1042,19 @@ document.addEventListener('keydown', e => {
 const menu = $('ctx');
 function closeMenu() { menu.hidden = true; }
 document.addEventListener('pointerdown', e => { if (!menu.hidden && !e.target.closest('#ctx')) closeMenu(); });
-function contextMenu({ x, y, t, onClip }) {
+function contextMenu({ x, y, t, onClip, onRuler }) {
   closePop();
-  const n = S.tl.sel.size, items = [];
-  if (onClip && n) {
+  const n = S.tl.sel.size, items = [], r = S.tl.range;
+  if (onRuler) {
+    items.push(['Range starts here', 'I at playhead', () => S.tl.setMark('a', t)], ['Range ends here', 'O at playhead', () => S.tl.setMark('b', t)]);
+    if (n) items.push(['Range around selection', '', 'rangeFromSelection']);
+    if (r) items.push(null, ['Clear range', 'Alt+X', 'clearRange']);
+  } else if (onClip && n) {
     items.push(['Cut', 'Ctrl+X', 'cut'], ['Copy', 'Ctrl+C', 'copy'], ['Duplicate', 'Ctrl+D', 'dup'], null,
       ['Split at playhead', 'S', 'split'], ['Crossfade with neighbours', 'X', 'xfade'], ['Backwards', 'R', 'reverse'], ['Mute', 'M', 'mute'], null);
-    const voiced = S.tl.selection().filter(c => c.type === 'take' || c.type === 'snip');
-    if (voiced.length) items.push([voiced.every(hasLips) ? 'Hide lips' : 'Show lips', '', () => lips(voiced, !voiced.every(hasLips))], null);
+    const voiced = S.tl.selection().filter(isVoiced);
+    if (voiced.length) items.push([voiced.every(hasLips) ? 'Hide lips' : 'Show lips', 'L', 'lips'], null);
+    items.push(['Range around selection', '', 'rangeFromSelection'], null);
     items.push(['Delete', 'Del', 'del'], ['Delete and close gap', 'Shift+Del', () => tools.del(true)]);
   } else {
     items.push(['Paste here', 'Ctrl+V', () => { S.tl.setPlayhead(t); tools.paste(); }], ['Play from here', 'double-click', () => S.player.play(t)], null,
@@ -1051,22 +1078,37 @@ function contextMenu({ x, y, t, onClip }) {
 els.exportBtn.addEventListener('click', () => {
   if (exporting) { exporting.abort(); return; }
   const open = els.exportMenu.hidden;
+  if (open) syncExportScope();
   els.exportMenu.hidden = !open;
   els.exportBtn.setAttribute('aria-expanded', String(open));
 });
 document.addEventListener('click', e => { if (!e.target.closest('.sc-export')) { els.exportMenu.hidden = true; els.exportBtn.setAttribute('aria-expanded', 'false'); } });
 let exporting = null;
+// Was ausgegeben wird: alles oder nur der markierte Bereich (Marken im Lineal)
+let exportScope = 'all';
+function syncExportScope() {
+  const r = S?.tl.range, btn = $('export-range');
+  if (!r) exportScope = 'all';
+  btn.disabled = !r;
+  btn.innerHTML = r ? `Range <small>${clock(r.a)}–${clock(r.b)}</small>` : 'Range';
+  $('export-range-hint').hidden = !!r;
+  for (const b of els.exportMenu.querySelectorAll('[data-scope]')) b.setAttribute('aria-checked', String(b.dataset.scope === exportScope));
+}
 els.exportMenu.addEventListener('click', async e => {
+  const scope = e.target.closest('[data-scope]')?.dataset.scope;
+  if (scope) { e.stopPropagation(); exportScope = scope; syncExportScope(); return; }
   const kind = e.target.closest('[data-export]')?.dataset.export;
   if (!kind || !S) return;
   els.exportMenu.hidden = true;
-  const name = file.name.replace(/\.[^.]+$/, '') + '-slinky';
-  if (kind === 'wav') { download(new Blob([encodeWav(S.player.mix(0, S.tl.end()))], { type: 'audio/wav' }), `${name}.wav`); return; }
+  const r = exportScope === 'range' && S.tl.range;
+  const span = r ? { t0: r.a, t1: r.b } : { t0: 0, t1: S.tl.end() };
+  const name = file.name.replace(/\.[^.]+$/, '') + '-slinky' + (r ? `-${clock(r.a).replace(/[:.]/g, '')}-${clock(r.b).replace(/[:.]/g, '')}` : '');
+  if (kind === 'wav') { download(new Blob([encodeWav(S.player.mix(span.t0, span.t1))], { type: 'audio/wav' }), `${name}.wav`); return; }
   const btn = els.exportBtn, label = btn.innerHTML;
   exporting = new AbortController();
   btn.title = 'Click to cancel';
   try {
-    const { blob, ext } = await S.player.render(f => { btn.textContent = `Exporting ${Math.round(f * 100)} % · cancel`; }, exporting.signal);
+    const { blob, ext } = await S.player.render(f => { btn.textContent = `Exporting ${Math.round(f * 100)} % · cancel`; }, exporting.signal, span);
     download(blob, `${name}.${ext}`);
   } catch (err) { if (err.name !== 'AbortError') fail(err.message); } finally {
     exporting = null; btn.innerHTML = label; btn.title = ''; S.player.sync(S.tl.playhead);
@@ -1098,9 +1140,9 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* ohne Speicher eben nicht */ } },
 };
 const ideas = { btn: $('ideas-btn'), box: $('ideas'), topic: $('ideas-topic'), key: $('ideas-key'), model: $('ideas-model'), go: $('ideas-go'), status: $('ideas-status'), list: $('ideas-models') };
-const DEFAULT_MODEL = 'google/gemini-2.5-flash-lite';
 ideas.key.value = store.get('slinky-openrouter-key');
-ideas.model.value = store.get('slinky-openrouter-model') || DEFAULT_MODEL;
+// alte Voreinstellung durch die neue ersetzen, eine eigene Wahl bleibt
+ideas.model.value = [store.get('slinky-openrouter-model')].find(m => m && m !== 'google/gemini-2.5-flash-lite') ?? DEFAULT_MODEL;
 ideas.key.addEventListener('change', () => store.set('slinky-openrouter-key', ideas.key.value.trim()));
 ideas.model.addEventListener('change', () => store.set('slinky-openrouter-model', ideas.model.value.trim()));
 ideas.btn.addEventListener('click', () => {
@@ -1120,53 +1162,31 @@ async function loadModels() {
 ideas.go.addEventListener('click', () => S && getIdeas({ topic: ideas.topic.value.trim() }).catch(err => { ideas.status.textContent = err.message; ideas.go.disabled = false; }));
 
 /** Satzvorschläge holen, schneiden, bewerten; die besten `keep` kommen in die Liste. */
-async function getIdeas({ topic = '', count = 10, keep = 4 } = {}) {
+async function getIdeas({ topic = '', count = 16, keep = 5 } = {}) {
   const key = ideas.key.value.trim(), model = ideas.model.value.trim() || DEFAULT_MODEL;
   if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; ideas.key.focus(); return []; }
   store.set('slinky-openrouter-key', key); store.set('slinky-openrouter-model', model);
   ideas.go.disabled = true;
-  ideas.status.textContent = 'Asking the model…';
   const spk = speaker();
   const ws = S.words.filter(w => spk == null || w.spk === spk);
-  // Wortschatz: was der Sprecher sagt, häufige zuerst (genau diese Formen klingen am besten)
-  const freq = new Map();
-  for (const w of ws) { const k = w.w.replace(/[^\p{L}\p{N}'-]/gu, ''); if (k) freq.set(k, (freq.get(k) ?? 0) + 1); }
-  const vocab = [...freq].sort((a, b) => b[1] - a[1]).slice(0, 1500).map(([k]) => k);
-  const step = Math.max(1, Math.ceil(ws.length / 1200));
-  const sample = ws.filter((_, i) => i % step === 0).map(w => w.w).join(' ');
-  const language = S.lang === 'de' ? 'German' : 'English';
-  const messages = [
-    { role: 'system', content: 'You write lines for a "sentence mixing" video (YouTube Poop style): a real speaker is re-cut so that they seem to say something new. Lines must be built from words the speaker actually says, because only those can be cut cleanly. Be funny, absurd or surprising, but grammatical.' },
-    { role: 'user', content: `Language: ${language}.\n${topic ? `Theme: ${topic}\n` : ''}Write ${count} different lines, 3 to 10 words each. Use ONLY words from the vocabulary below, in exactly these forms (same inflection). At most one word per line may be missing from the list. Punctuation is fine.\nReply as JSON: {"lines": ["…", "…"]}\n\nVocabulary (most frequent first):\n${vocab.join(', ')}\n\nWhat the speaker says (excerpt):\n${sample}` },
-  ];
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'Slinky-Cut' },
-    body: JSON.stringify({ model, messages, temperature: 0.9, response_format: { type: 'json_object' } }),
-  });
-  if (!res.ok) { const t = await res.text(); throw new Error(`OpenRouter: ${res.status} ${t.slice(0, 160)}`); }
-  const content = (await res.json()).choices?.[0]?.message?.content ?? '';
-  let lines = [];
-  try { lines = JSON.parse(content.replace(/^```(?:json)?|```$/gm, '').trim()).lines ?? []; }
-  catch { lines = content.split('\n').map(l => l.replace(/^[\s\d.\-*"“]+|["”,]+$/g, '').trim()).filter(l => l.split(/\s+/).length >= 2); }
-  lines = [...new Set(lines.filter(l => typeof l === 'string' && l.trim()))].slice(0, count);
-  if (!lines.length) throw new Error('The model sent no usable lines.');
+  // Höchstens zwei gebaute Wörter pro Zeile; ob sie verständlich sind, zeigt der Schnitt
+  const { lines } = await generateIdeas({ key, model, words: ws, lang: S.lang, topic, count, onStatus: m => { ideas.status.textContent = m; } });
+  if (!lines.length) throw new Error('The model sent no usable lines. Try again.');
   // Schneiden und bewerten: ganze Wörter zählen voll, Silben halb, einzelne Laute kaum
   const scored = [];
   for (const [i, text] of lines.entries()) {
     ideas.status.textContent = `Cutting idea ${i + 1} of ${lines.length}…`;
-    const r = await request({ type: 'mix', text, speaker: spk });
-    const score = r.words.reduce((a, w) => a + ({ whole: 1, syllables: 0.5, sounds: 0.1 }[w.quality] ?? 0), 0) / Math.max(1, r.words.length);
-    scored.push({ text, r, score });
+    let r;
+    try { r = await request({ type: 'mix', text, speaker: spk }); } catch { continue; }   // eine kaputte Zeile kostet nicht alle
+    scored.push({ text, r, cost: buildCost(r.words) });
   }
-  scored.sort((a, b) => b.score - a.score);
-  const best = scored.slice(0, keep);
-  for (const { text, r, score } of best.reverse()) {
-    S.bin.unshift({ id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force, rev: 0, ai: true, score });
+  const best = pickIdeas(scored, keep);
+  for (const { text, r } of best.reverse()) {
+    S.bin.unshift({ id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force, rev: 0, ai: true });
   }
   renderBin();
   save();
-  ideas.status.textContent = `Added the ${best.length} best-sounding of ${lines.length} ideas.`;
+  ideas.status.textContent = `Added ${best.length} of ${lines.length} ideas – the funniest that cut cleanly.`;
   ideas.go.disabled = false;
   return best.map(x => x.text);
 }
@@ -1208,6 +1228,8 @@ window.slinkyCut = {
   stop: () => S.player.stop(),
   /** Die Zeitleiste als Daten (ohne Ton). */
   clips: () => S?.tl.clips.map(({ take, ...c }) => ({ ...c, text: take?.text })) ?? [],
-  /** Ganze Mischung als WAV-Blob. */
-  wav: () => new Blob([encodeWav(S.player.mix(0, S.tl.end()))], { type: 'audio/wav' }),
+  /** Mischung als WAV, ganz oder von t0 bis t1 (s). */
+  wav: (t0 = 0, t1 = S.tl.end()) => new Blob([encodeWav(S.player.mix(t0, t1))], { type: 'audio/wav' }),
+  /** Ausgabebereich setzen (null, null = keiner). */
+  range: (a, b) => { S.tl.setRange(a, b); return S.tl.range; },
 };

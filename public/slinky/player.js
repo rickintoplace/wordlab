@@ -272,17 +272,19 @@ export class Player extends EventTarget {
    * Video ausgeben. Mit WebCodecs als MP4, Bild für Bild genau (auch Rückwärts und
    * Tempo); ohne WebCodecs als Echtzeit-Aufnahme. Liefert {blob, ext}.
    */
-  async render(onProgress, signal) {
+  async render(onProgress, signal, span = {}) {
     this.stop();
+    const t0 = span.t0 ?? 0, t1 = span.t1 ?? this.tl.end();
     if (window.VideoEncoder && window.AudioEncoder) {
-      try { return await this.renderMp4(onProgress, signal); } catch (err) { if (signal?.aborted) throw err; console.warn('WebCodecs:', err); }
+      try { return await this.renderMp4(onProgress, signal, t0, t1); } catch (err) { if (signal?.aborted) throw err; console.warn('WebCodecs:', err); }
     }
-    return this.record(onProgress, signal);
+    return this.record(onProgress, signal, t0, t1);
   }
 
-  async renderMp4(onProgress, signal) {
+  /** Bereich [from, to) der Zeitleiste als MP4; die Datei beginnt bei 0. */
+  async renderMp4(onProgress, signal, from, to) {
     const { Muxer, ArrayBufferTarget } = await import(MUXER);
-    const W = this.canvas.width, H = this.canvas.height, FPS = 30, end = this.tl.end();
+    const W = this.canvas.width, H = this.canvas.height, FPS = 30, end = to - from;
     const vcands = [['avc', 'avc1.4d0028'], ['avc', 'avc1.42001f'], ['vp9', 'vp09.00.31.08']];
     let vc = null;
     for (const [kind, codec] of vcands) {
@@ -305,7 +307,7 @@ export class Player extends EventTarget {
     aenc.configure(ac.cfg);
 
     // Ton zuerst (schnell), dann Bild für Bild
-    const pcm = this.mix(0, end), N = 1024;
+    const pcm = this.mix(from, to), N = 1024;
     for (let i = 0; i < pcm.length; i += N) {
       const part = pcm.subarray(i, Math.min(pcm.length, i + N));
       const ad = new AudioData({ format: 'f32-planar', sampleRate: SR, numberOfFrames: part.length, numberOfChannels: 1, timestamp: Math.round(i / SR * 1e6), data: part });
@@ -316,8 +318,8 @@ export class Player extends EventTarget {
       if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
       if (fail) throw fail;
       const t = i / FPS;
-      this.tl.setPlayhead(t);
-      await this.frameAt(t);
+      this.tl.setPlayhead(from + t);
+      await this.frameAt(from + t);
       const vf = new VideoFrame(this.canvas, { timestamp: Math.round(t * 1e6), duration: Math.round(1e6 / FPS) });
       venc.encode(vf, { keyFrame: i % (FPS * 2) === 0 });
       vf.close();
@@ -331,8 +333,8 @@ export class Player extends EventTarget {
   }
 
   /** Ersatzweg ohne WebCodecs: einmal in Echtzeit abspielen und aufnehmen. */
-  async record(onProgress, signal) {
-    const end = this.tl.end(), ctx = this.audio(), dest = ctx.createMediaStreamDestination();
+  async record(onProgress, signal, from, to) {
+    const end = to - from, ctx = this.audio(), dest = ctx.createMediaStreamDestination();
     const stream = new MediaStream([...this.canvas.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
     const types = ['video/mp4;codecs=avc1.42E01F,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
     const mimeType = types.find(t => window.MediaRecorder?.isTypeSupported(t));
@@ -341,8 +343,8 @@ export class Player extends EventTarget {
     const parts = [];
     rec.ondataavailable = e => e.data.size && parts.push(e.data);
     const stopped = new Promise(r => { rec.onstop = r; });
-    await this.frameAt(0);
-    const data = this.mix(0, end), buf = ctx.createBuffer(1, Math.max(1, data.length), SR);
+    await this.frameAt(from);
+    const data = this.mix(from, to), buf = ctx.createBuffer(1, Math.max(1, data.length), SR);
     buf.copyToChannel(data, 0);
     const node = ctx.createBufferSource();
     node.buffer = buf;
@@ -355,7 +357,7 @@ export class Player extends EventTarget {
       const loop = () => {
         const t = Math.max(0, ctx.currentTime - t0);
         if (t >= end || signal?.aborted) { this.playing = false; resolve(); return; }
-        this.sync(t, true); this.draw(t);
+        this.sync(from + t, true); this.draw(from + t);
         onProgress?.(t / end);
         requestAnimationFrame(loop);
       };

@@ -100,7 +100,13 @@ Everything runs in the browser, one heavy model at a time in its own worker
 The editor (`timeline.js`, `player.js`, `project.js`) has tracks for video,
 lip-sync snippets, voice and music; clips can be moved, trimmed, split, faded,
 crossfaded (X), reversed and sped up, and every word or syllable can be swapped
-for alternatives or retyped.
+for alternatives or retyped. L puts the matching mouth from the video on the Lips track. I and O mark a range in the ruler; export then
+offers just that range.
+
+“Ideas” (`ideas.js`) asks a language model for lines made mostly of words the
+speaker actually says, with at most two words that have to be built from their
+syllables. Every line is cut, and only the funniest whose built words still fit
+together (low join cost) are kept.
 
 ### Scripting it
 
@@ -114,7 +120,7 @@ slinkyCut.choose(alts.findIndex(a => !a.current));
 await slinkyCut.rewrite(id, 3, 'rätselhaft');         // retype word 3
 slinkyCut.place(id, 12.5);                            // onto the voice track at 12.5 s
 slinkyCut.play(10, 20);
-const wav = slinkyCut.wav();                          // whole mix as a WAV blob
+const wav = slinkyCut.wav();                          // whole mix as a WAV blob (or wav(t0, t1))
 await slinkyCut.ideas('a cooking show');              // needs the OpenRouter key in the Ideas box
 ```
 
