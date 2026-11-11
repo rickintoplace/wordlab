@@ -450,6 +450,9 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .sc-ai-from { margin: 0; font-size: .82rem; color: var(--muted); font-style: italic; }
 .sc-ai-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
 .sc-ai-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .5rem; align-items: center; font-size: .88rem; line-height: 1.35; }
+.sc-ai-list li { cursor: grab; border-radius: 8px; padding: .15rem .3rem; margin: 0 -.3rem; }
+.sc-ai-list li.on { background: color-mix(in oklab, var(--c-onset-1) 14%, transparent); }
+.sc-ai-list li.on .sc-ai-use { visibility: hidden; }
 .sc-ai-use { padding: .2rem .6rem; }
 
 /* ------------------------------------------------------------------ weitere Quellen */

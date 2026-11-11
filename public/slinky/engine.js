@@ -131,6 +131,25 @@ export function buildSource({ lang, words, phones, a16, a48, feat = null }) {
   const loud = sorted[Math.floor(sorted.length * 0.95)];
   const eAt = t => feat.energy[Math.min(feat.frames - 1, Math.max(0, Math.round(t * 200)))];
   for (const p of ph) { p.Es = eAt(p.s); p.Em = eAt(p.mid); p.Ee = eAt(p.e); }
+  // Ein Laut, in dem eine echte Pause liegt, ist falsch verortet: Das Alignment hat
+  // ein Wort über die Pause gezogen (falsch transkribiertes „Orthum“ greift sich das
+  // „m“ aus dem folgenden „Damit“). Solche Wörter taugen weder ganz noch in Teilen.
+  const SIL = Math.max(sorted[Math.floor(sorted.length * 0.05)] + 6, loud - 22);
+  const silent = (a, b) => {
+    let run = 0, best = 0;
+    for (let f = Math.ceil(a * 200); f < Math.floor(b * 200); f++) { run = feat.energy[f] < SIL ? run + 1 : 0; best = Math.max(best, run); }
+    return best / 200;
+  };
+  const STOP = /^(p|b|t|d|k|ɡ|ts|tʃ|pf)$/;
+  // im Laut selbst oder in einer Lücke zwischen zwei Lauten desselben Worts
+  // (Lücken zwischen Lauten eines Worts lässt das Alignment sonst kaum; über 0,3 s ist es keins)
+  const stretched = (p, q) => (q && q.s - p.e > 0.3) || silent(p.s, q ? q.s : p.e) > (STOP.test(p.t) || STOP.test(q?.t ?? '') ? 0.25 : 0.15);
+  for (const w of data.words) {
+    if (w.ps < 0) continue;
+    const bad = ph.slice(w.ps, w.pe + 1).some((p, k, a) => stretched(p, a[k + 1]));
+    w.stretched = bad;
+    if (bad) for (let k = w.ps; k <= w.pe; k++) ph[k].lp = Math.min(ph[k].lp, -9);
+  }
 
   // Typische Dauer pro Laut und Prominenz der Vokale (Dauer + Lautstärke + Tonhöhe
   // relativ zur Umgebung) – die tatsächliche Betonung, nicht die aus dem Wörterbuch.

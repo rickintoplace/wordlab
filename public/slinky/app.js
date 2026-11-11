@@ -662,11 +662,16 @@ function inspect(sel) {
   btn(sel.every(x => x.muted) ? 'Unmute' : 'Mute', () => tools.mute(), sel.every(x => x.muted) ? 'volume-2' : 'volume-x', 'M');
   btn('Delete', () => tools.del(), 'trash', 'Del (Shift+Del closes the gap)');
   box.append(acts);
-  if (ai && ai.ids === sel.map(x => x.id).sort().join()) box.append(ai.el);
+  const found = aiFor(sel);
+  if (found) box.append(found.el);
 }
 
 // ---------------------------------------------------------------- KI: Stelle umschreiben
-let ai = null;          // { ids, el } – Ergebnisse für die gerade gewählten Clips
+// Ergebnisse bleiben, auch nach „Use“ und Rückgängig: Sie gelten für die Clips, für die sie
+// geholt wurden, und für jeden Clip, der daraus entstanden ist. { keys: Set, el }
+const aiResults = [];
+const selKey = sel => sel.map(x => x.id).sort().join();
+const aiFor = sel => (sel.length ? aiResults.findLast(r => r.keys.has(selKey(sel))) : null);
 
 /** Was in einem Ton-Clip gesagt wird (nur der sichtbare Teil). */
 function clipText(c) {
@@ -697,7 +702,6 @@ async function aiRewrite(cs) {
     return;
   }
   const spk = clipSpeaker(cs[0]);
-  const ids = cs.map(x => x.id).sort().join();
   const el = document.createElement('div');
   el.className = 'sc-ai';
   el.innerHTML = `<p class="sc-ai-from">“${esc(line)}”</p>`;
@@ -705,7 +709,9 @@ async function aiRewrite(cs) {
   busy.className = 'sc-busy';
   busy.innerHTML = '<span class="sc-busy-ring"></span><span class="sc-busy-text">Asking the model…</span>';
   el.append(busy);
-  ai = { ids, el };
+  const entry = { keys: new Set([selKey(cs)]), el };
+  aiResults.push(entry);
+  if (aiResults.length > 20) aiResults.shift();
   inspect(S.tl.selection());
   const say = t => { busy.querySelector('.sc-busy-text').textContent = t; };
   try {
@@ -721,7 +727,16 @@ async function aiRewrite(cs) {
     const list = document.createElement('ol');
     list.className = 'sc-ai-list';
     for (const { text, r } of best) {
+      const b = { text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force };
       const li = document.createElement('li');
+      li.draggable = true;
+      li.title = 'Drag onto a track to add it anywhere';
+      li.addEventListener('dragstart', ev => {
+        dragging = { clip: takeClip(b, 0, 'a1') };
+        ev.dataTransfer.setData('text/plain', text);
+        ev.dataTransfer.effectAllowed = 'copy';
+      });
+      li.addEventListener('dragend', () => { dragging = null; S.tl.ghost(null); });
       const play = document.createElement('button');
       play.type = 'button'; play.className = 'sc-mini'; play.setAttribute('aria-label', 'Listen'); play.title = 'Listen';
       play.append(icon('play', { size: '13px' }));
@@ -730,8 +745,8 @@ async function aiRewrite(cs) {
       t.textContent = text;
       const use = document.createElement('button');
       use.type = 'button'; use.className = 'sc-act sc-ai-use'; use.textContent = 'Use';
-      use.title = 'Replace the selected clips with this version';
-      use.addEventListener('click', () => useRewrite(cs, { text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force }));
+      use.title = 'Replace the selected clips with this version (the other versions stay here)';
+      use.addEventListener('click', () => { useRewrite(entry, b); for (const x of list.children) x.classList.toggle('on', x === li); });
       li.append(play, t, use);
       list.append(li);
     }
@@ -742,18 +757,18 @@ async function aiRewrite(cs) {
   }
 }
 
-/** Gewählte Clips durch eine Fassung ersetzen (an der Stelle des ersten, auf seiner Spur). */
-function useRewrite(cs, b) {
+/** Die gewählten Clips durch eine Fassung ersetzen (an der Stelle des ersten, auf seiner Spur). */
+function useRewrite(entry, b) {
   const { tl } = S;
-  cs = cs.map(c => tl.get(c.id)).filter(Boolean);
-  if (!cs.length) return;
+  const cs = tl.selection().filter(isVoiced);
+  if (!cs.length || !entry.keys.has(selKey(cs))) return;
   tl.commit();
   const hadLips = cs.some(hasLips);
   const at = Math.min(...cs.map(c => c.at)), track = cs[0].track, gain = cs[0].gain ?? 1;
   tl.remove(withLips(cs).map(c => c.id));
   const n = tl.add({ ...takeClip(b, at, track), gain });
+  entry.keys.add(n.id);
   tl.changed();
-  ai = null;
   tl.select(n.id);
   if (hadLips) { tl.history.pop(); lips([n], true); }
   S.player.play(n.at, { until: endOf(n) });
