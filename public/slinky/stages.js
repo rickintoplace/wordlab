@@ -38,7 +38,7 @@ self.onmessage = async ({ data: m }) => {
     } else if (m.task === 'transcribe') {
       post({ type: 'result', ...await transcribe(m.a16, m.lang) });
     } else if (m.task === 'speakers') {
-      post({ type: 'result', spk: await speakers(m.a16, m.words) });
+      post({ type: 'result', ...await speakers(m.a16, m.words, m.refs ?? []) });
     } else if (m.task === 'phonemes') {
       const r = await posteriors(m.a16);
       post({ type: 'result', ...r }, [r.post.buffer]);
@@ -185,7 +185,9 @@ async function transcribe(a16, lang) {
 // ---------- 2b. Sprecher ----------
 // Atemgruppen (Wörter ohne längere Pause dazwischen) bekommen je eine
 // Stimm-Einbettung (WeSpeaker ResNet34); ähnliche Gruppen werden zusammengefasst.
-async function speakers(a16, words) {
+// refs (beim Hinzufügen einer Quelle): [{id, clips: [Float32Array 16 kHz]}] – Stimmen, die es
+// schon gibt. Jede neue Stimme bekommt die ähnlichste davon (match), wenn sie nah genug ist.
+async function speakers(a16, words, refs = []) {
   const SR = 16000;
   const groups = [];
   let cur = null;
@@ -195,7 +197,7 @@ async function speakers(a16, words) {
     else { cur.e = w.e; cur.idx.push(i); }
   });
   const spk = new Array(words.length).fill(0);
-  if (groups.length < 2) return spk;
+  if (groups.length < 2 && !refs.length) return { spk, match: [] };
   const model = await AutoModel.from_pretrained(SPEAKER_MODEL, { dtype: 'fp32', device: 'wasm', progress_callback: downloads('speakers', 'voice model'),
     session_options: { enableCpuMemArena: false, enableMemPattern: false } });
   const fe = await AutoFeatureExtractor.from_pretrained(SPEAKER_MODEL);
@@ -218,8 +220,35 @@ async function speakers(a16, words) {
     embs.push(sum.map(y => y / n));
     progress('speakers', (g + 1) / groups.length, '');
   }
-  await model.dispose?.();
   const cos = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
+  // Vergleichsstimmen einbetten (je Stimme Mittel ihrer Stücke)
+  const refEmb = [];
+  for (const r of refs) {
+    const sum = new Float32Array(256);
+    for (const x of r.clips) {
+      for (let o = 0; o + 0.7 * SR <= x.length; o += WIN) {
+        const w = new Float32Array(WIN);
+        for (let i = 0; i < WIN; i++) w[i] = x[o + (i % Math.min(WIN, x.length - o))];
+        const v = Object.values(await model(await fe(w)))[0].data, n = Math.hypot(...v) || 1;
+        for (let i = 0; i < Math.min(256, v.length); i++) sum[i] += v[i] / n;
+      }
+    }
+    const n = Math.hypot(...sum);
+    if (n) refEmb.push({ id: r.id, e: sum.map(y => y / n) });
+  }
+  await model.dispose?.();
+  /** Je Stimme der neuen Aufnahme die nächste Vergleichsstimme (Kosinus-Abstand). */
+  const matchAll = () => {
+    const labels = [...new Set(spk)];
+    return labels.map(k => {
+      const sum = new Float32Array(256);
+      groups.forEach((g, i) => { if (embs[i] && spk[g.idx[0]] === k) for (let d = 0; d < 256; d++) sum[d] += embs[i][d]; });
+      const n = Math.hypot(...sum) || 1, c = sum.map(y => y / n);
+      const best = refEmb.map(r => ({ id: r.id, dist: 1 - cos(c, r.e) })).sort((a, b) => a.dist - b.dist)[0];
+      return { spk: k, ref: best && best.dist < 0.5 ? best.id : null, dist: best?.dist ?? 1 };
+    });
+  };
+  if (groups.length < 2) return { spk, match: matchAll() };
   const long = (i) => groups[i].e - groups[i].s >= 1.2;
   // 1. lange Gruppen agglomerativ (mittlerer Kosinus-Abstand < 0,5)
   let cl = embs.map((e, i) => (e && long(i) ? { m: [i] } : null)).filter(Boolean);
@@ -233,7 +262,7 @@ async function speakers(a16, words) {
   const secs = c => c.m.reduce((a, i) => a + groups[i].e - groups[i].s, 0);
   // 2. Winzlinge (unter 3 s Sprechzeit) dem nächsten großen Sprecher zuschlagen
   const big = cl.filter(c => secs(c) >= 3);
-  if (!big.length) return spk;
+  if (!big.length) return { spk, match: matchAll() };
   for (const c of cl) if (!big.includes(c)) {
     const near = big.reduce((a, b) => (dist(c, b) < dist(c, a) ? b : a));
     near.m.push(...c.m);
@@ -248,7 +277,7 @@ async function speakers(a16, words) {
   });
   groups.forEach((g, i) => { if (!lab.has(i)) lab.set(i, lab.get(i - 1) ?? lab.get(i + 1) ?? 0); });
   groups.forEach((g, i) => g.idx.forEach(w => { spk[w] = lab.get(i); }));
-  return spk;
+  return { spk, match: matchAll() };
 }
 
 // ---------- 3. Phoneme ----------

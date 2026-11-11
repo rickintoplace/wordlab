@@ -10,7 +10,7 @@
 
 import { soundClass, isVowel, canon } from './phones.js';
 import { mfcc, f0At } from './dsp.js';
-import { pronounceSync } from './g2p.js';
+import { pronounceSync, deSuffixes } from './g2p.js';
 
 // ---------- Gewichte (später per Hörtest zu tunen) ----------
 export const W = {
@@ -33,7 +33,7 @@ export const W = {
   energy: 0.06,          // pro dB
   wordBonus: 0.3,
   wpos: 1.5,             // Lautposition im Wort (Anlaut/Inlaut/Auslaut) passt nicht
-  bound: 3.0,            // letztes Wort vor einer Grenze: Grenztyp (Aussage/Frage/Aufzählung) passt nicht
+  bound: 1.5,            // letztes Wort vor einer Grenze: Grenztyp (Aussage/Frage/Aufzählung) passt nicht
   prom: 1.5,             // Betonung: Prominenz des Quellvokals passt nicht zum Ziel
   dur: 2.5,              // zusammengesetzter Laut deutlich kürzer als üblich
   midVowel: 2.5,         // Aufschlag für Schnitte mitten in Vokalen (klingt nach anderem Vokal)
@@ -44,6 +44,13 @@ export const W = {
   burstLeak: 2.0,        // behauchter Anfang nach stimmlosem Verschluss, wo das Ziel keinen hat („lol“ → „klol“), je 20 ms
   sylRole: 1.0,          // Konsonant im Silbenanfang vs. Silbenende (anders gesprochen: „ts“ in „Wur-zeln“ ≠ „Furz“)
   sylLast: 0.6,          // Vokal/Endkonsonant aus letzter vs. nicht letzter Silbe des Worts (Längung am Wortende)
+  codaPos: 1,            // Anteil von wpos, wenn beide im Silbenendrand stehen und sich nur Wortende/Wortinneres unterscheidet
+  boundVowelOnly: 1,     // Grenztyp nur am Vokal der letzten Silbe prüfen
+  vowelCtx: 2.5,
+  lenSwap: 1.0,          // gleicher Vokal, andere Länge (o/oː); die Dauer bewertet durDev zusätzlich
+  vowelSwap: 4.0,        // anderer Vokal derselben Klasse (ɔ statt oː, ɛ statt eː)
+  shortV: 0.06,          // Vokal so kurz, dass der Knall des Verschlusses davor ihn ganz färbt (s)
+  reuse: 4.0,            // derselbe Quellvokal schon in einem anderen Wort des Satzes (hörbar kopiert)
   chain: 1.5,            // Bonus, wenn zwei Wörter am Stück aus der Quelle kommen (Satzmelodie bleibt natürlich)
   normLoud: 0,           // Stücke auf globale Sprechlautstärke bringen (Runde 4: eher störend)
 };
@@ -80,7 +87,10 @@ export function buildSource({ lang, words, phones, a16, a48, feat = null }) {
   // Was der Sprecher tatsächlich sagt (z. B. britisches [ɑː] in „disaster“, wo
   // das Wörterbuch [æ] hat): Innerhalb derselben Lautklasse gilt das Gehörte,
   // bei unsicherem Alignment auch über Klassengrenzen.
-  for (const p of ph) p.real = p.raw && (soundClass(p.raw) === p.cls || p.lp < -1) ? p.raw : p.t;
+  // Lang gegen kurz (aː/a, eː/ɛ, iː/ɪ …): Da irrt das Modell oft, das Wörterbuch weiß es besser –
+  // und die Länge unterscheidet Wörter (Blase/Masse)
+  const lenOnly = (a, b) => a !== b && isVowel(a) && isVowel(b) && soundClass(a) === soundClass(b) && a.includes('ː') !== b.includes('ː');
+  for (const p of ph) p.real = p.raw && !lenOnly(p.raw, p.t) && (soundClass(p.raw) === p.cls || p.lp < -1) ? p.raw : p.t;
   ph.forEach((p, i) => {
     p.i = i;
     const nb = ph[i + 1], pv = ph[i - 1];
@@ -103,6 +113,12 @@ export function buildSource({ lang, words, phones, a16, a48, feat = null }) {
   // Nach einem stimmlosen Verschluss (k, t, p, ts) ist der Folgelaut oft erst behaucht
   // ([kʰl̥] in „Klover“): Wie lange dauert es, bis die Stimme einsetzt?
   const VLESS = /^(p|t|k|ts|tʃ)$/, VOICED = /^(l|m|n|ŋ|r|ʁ|ɾ|ɹ|j|w|v|z)$/;
+  // Liegt die Verschlusslösung des Laut davor (das „g“ von „Augen“, das „t“ vor „hat“)
+  // noch in diesem Laut? Dann klingt sein Anfang danach – Abstand in Sekunden.
+  for (const p of ph) {
+    const pv = ph[p.i - 1];
+    p.burstIn = pv && pv.next === p.i && pv.burst != null && pv.burst > p.s - 0.004 ? +Math.max(0, pv.burst - p.s).toFixed(3) + 0.004 : 0;
+  }
   for (const p of ph) {
     const pv = ph[p.i - 1];
     p.voiceOn = 0;
@@ -175,7 +191,7 @@ export function buildSource({ lang, words, phones, a16, a48, feat = null }) {
     if (!(isVowel(t) || t === 'ɾ')) continue;
     const tot = [...c.values()].reduce((a, b) => a + b, 0);
     const [top, n] = [...c].sort((a, b) => b[1] - a[1])[0];
-    if (tot >= 8 && top !== t && n / tot >= 0.4) accent.set(t, top);
+    if (tot >= 8 && top !== t && !lenOnly(top, t) && n / tot >= 0.4) accent.set(t, top);
   }
   return { ...data, a16, a48, feat, loud, typical, globE, lexicon, accent };
 
@@ -226,10 +242,19 @@ export function targetPhones(text, lang, g2pLex, src = null, { inst = {}, pauses
     // inst[wi]: genau dieses Vorkommen in der Quelle – dann gilt seine Aussprache
     const sw = inst[wi] != null ? src?.words[inst[wi]] : null;
     const fixed = sw && sw.ps >= 0 ? src.phones.slice(sw.ps, sw.pe + 1).map(p => ({ t: p.real, stress: p.stress })) : null;
-    const known = fixed ?? lexicon?.get(w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase());
+    const key = w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+    let known = fixed ?? lexicon?.get(key);
+    // Wort des Sprechers + Endung („Giganten“ + s): seine Aussprache des Stamms
+    if (!known && lang === 'de' && lexicon) {
+      for (const { stem, toks } of deSuffixes(key)) {
+        const k = lexicon.get(stem);
+        if (k) { known = [...(k.toks ?? k), ...toks.map(t => ({ t: t.t, stress: 0 }))]; break; }
+      }
+    }
     const pr = known ? null : pronounceSync(w, lang, g2pLex);
     wordInfo.push({ w, source: known ? 'speaker' : pr.source });
-    const toks = known ? (known.toks ?? known) : pr.toks.map(x => accent?.has(x.t) ? { ...x, t: accent.get(x.t) } : x);
+    let toks = known ? (known.toks ?? known) : pr.toks.map(x => accent?.has(x.t) ? { ...x, t: accent.get(x.t) } : x);
+    if (!known && lexicon && g2pLex) toks = speakerParts(key, toks, src, lang, g2pLex);
     // pauses[wi]: Pause nach dem Wort wie in der Quelle (beim Bearbeiten der Originalstimme)
     const pause = pauses[wi] ?? (/[.!?…]$/.test(w) ? 0.35 : /[,;:–—]$/.test(w) ? 0.15 : 0);
     let lastV = toks.length - 1;
@@ -251,6 +276,42 @@ export function targetPhones(text, lang, g2pLex, src = null, { inst = {}, pauses
   return { words, phones: out, wordInfo };
 }
 
+/**
+ * Teilt das Zielwort Anfang oder Ende mit einem Wort des Sprechers („Extrem-räumen“ /
+ * „extrem-sten“), gilt dort seine Aussprache (er sagt [ɛ], das Wörterbuch [eː]) –
+ * aber nur, soweit die Wörterbuch-Aussprachen beider Wörter dort übereinstimmen.
+ */
+function speakerParts(key, toks, src, lang, g2pLex) {
+  if (key.length < 6) return toks;
+  if (!src._g2pWords) {
+    src._g2pWords = [];
+    for (const [k, v] of src.lexicon) {
+      const real = v.toks ?? v, dict = pronounceSync(k, lang, g2pLex).toks;
+      if (k.length >= 5 && dict.length === real.length) src._g2pWords.push({ k, real, dict });
+    }
+  }
+  const out = toks.map(x => ({ ...x }));
+  // (gleicher Laut oder Vokal derselben Klasse: dort unterscheiden sich Regeln und Wörterbuch oft)
+  const same = (a, b) => canon(a.t) === canon(b.t) || (isVowel(a.t) && isVowel(b.t) && soundClass(a.t) === soundClass(b.t));
+  let bestP = null, bestS = null;
+  for (const e of src._g2pWords) {
+    if (e.k === key) continue;
+    let lp = 0; while (lp < key.length && lp < e.k.length && key[lp] === e.k[lp]) lp++;
+    let ls = 0; while (ls < key.length && ls < e.k.length && key.at(-1 - ls) === e.k.at(-1 - ls)) ls++;
+    if (lp >= 5 && (!bestP || lp > bestP.l)) bestP = { e, l: lp };
+    if (ls >= 5 && (!bestS || ls > bestS.l)) bestS = { e, l: ls };
+  }
+  if (bestP) {
+    const { real, dict } = bestP.e;
+    for (let j = 0; j < Math.min(out.length, dict.length) - 1 && same(out[j], dict[j]); j++) out[j] = { ...out[j], t: real[j].t };
+  }
+  if (bestS) {
+    const { real, dict } = bestS.e;
+    for (let j = 1; j < Math.min(out.length, dict.length) && same(out.at(-j), dict.at(-j)); j++) out[out.length - j] = { ...out.at(-j), t: real.at(-j).t };
+  }
+  return out;
+}
+
 /** Text in Wörter; reine Satzzeichen („–“, „…“) hängen am Wort davor. */
 export function splitWords(text) {
   const out = [];
@@ -263,6 +324,8 @@ export function splitWords(text) {
 }
 
 // ---------- Auswahl ----------
+/** Gleicher Vokal, nur die Länge anders (o/oː, a/aː …). */
+const lenPair = (a, b) => a !== b && a.replace(/ː/g, '') === b.replace(/ː/g, '') && isVowel(a);
 export const wordKey = w => w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
 
 /**
@@ -335,6 +398,37 @@ export function syllableBounds(phones) {
 // cuts: 'all' (frei), 'mid' (nur in Lautmitten = Diphone), 'edge' (nur an Lautgrenzen),
 //       'syll' (nur an Silbengrenzen)
 export function select(src, tgt, K = 250, constrain = {}, cuts = 'all', only = null) {
+  // Derselbe Quellvokal an zwei Stellen verschiedener Wörter („Ha-se“ und „hat“ aus
+  // demselben „hat“) klingt hörbar kopiert – ebenso derselbe Vokal desselben Worts aus
+  // einem anderen Vorkommen. Dort, wo das Wort nicht ganz übernommen ist, verteuern
+  const pen = new Map();
+  let r;
+  for (let round = 0; round < 3; round++) {
+    r = selectOnce(src, tgt, K, constrain, cuts, only, pen);
+    const used = new Map();
+    let found = false;
+    r.chosen.forEach((c, st) => {
+      const i = st >> 1, T = tgt.phones[i];
+      if (!isVowel(T.t)) return;
+      const key = vowelKey(src, c.p), u = used.get(key);
+      if (u == null) { used.set(key, { i, p: c.p }); return; }
+      const prev = u.i;
+      if (prev === i || tgt.phones[prev].word === T.word) return;
+      // Gleiches Stück an beiden Stellen im richtigen Umfeld („extrem-sten“, „Extrem-räumen“): gewollt
+      if (inPlace(u.p, tgt.phones[prev]) && inPlace(c.p, T)) return;
+      const at = constrain[i] && !constrain[prev] ? prev : i;
+      (pen.get(at) ?? pen.set(at, new Set()).get(at)).add(key);
+      found = true;
+    });
+    if (!found) break;
+  }
+  return r;
+}
+const inPlace = (p, T) => canon(p.prevT ?? '') === canon(T.prevT ?? '') && canon(p.nextT ?? '') === canon(T.nextT ?? '');
+/** Welcher Vokal welchen Worts (ohne Vorkommen): „hat#1“. */
+const vowelKey = (src, p) => p.vkey ??= `${wordKey(src.words[p.w].w)}#${p.i - src.words[p.w].ps}`;
+
+function selectOnce(src, tgt, K, constrain, cuts, only, pen) {
   const syl = cuts === 'syll' ? syllableBounds(tgt.phones) : null;
   const BAN = 25;                                   // „verboten“, aber nicht unmöglich
   // Phantome aussortieren: Laute, die das Alignment erzwungen hat, die das Modell aber nicht hört.
@@ -353,10 +447,13 @@ export function select(src, tgt, K = 250, constrain = {}, cuts = 'all', only = n
   for (let i = 0; i < N; i++) {
     const T = tgt.phones[i];
     const tk = canon(T.t);
+    // Gleicher Laut; dazu immer die verwandten (gleiche Klasse): gleicher Vokal mit anderer
+    // Länge („o“ aus „Echo“ für „doof“) kostet wenig, ein anderer Vokal (ɔ für oː) mehr
+    const swap = p => (lenPair(p.real, T.t) ? W.lenSwap : isVowel(T.t) ? W.vowelSwap : W.sameClass);
     let cands = (byT.get(tk) ?? []).map(p => ({ p, base: 0 }));
-    if (cands.length < 20) cands.push(...(byC.get(T.cls) ?? []).filter(p => canon(p.real) !== tk).map(p => ({ p, base: W.sameClass })));
+    cands.push(...(byC.get(T.cls) ?? []).filter(p => canon(p.real) !== tk).map(p => ({ p, base: swap(p) })));
     // Vorgabe (z. B. „ganzes Wort aus der Quelle“): alle passenden Laute, auch klassenfremde
-    if (constrain[i]) cands = src.phones.filter(p => (!only || only(p)) && constrain[i](p, src.phones)).map(p => ({ p, base: canon(p.real) === tk ? 0 : W.sameClass }));
+    if (constrain[i]) cands = src.phones.filter(p => (!only || only(p)) && constrain[i](p, src.phones)).map(p => ({ p, base: canon(p.real) === tk ? 0 : swap(p) }));
     if (!cands.length) { missing.push(T.t); cands = ph.filter(p => GROUP(p.t) === GROUP(T.t)).map(p => ({ p, base: 5 })); }
     const conf = p => (p.lp < -0.7 ? W.lowConf * (-0.7 - p.lp) : 0) + (p.raw && p.real !== p.raw ? W.realized : 0);
     const STOPS = /^(p|b|t|d|k|ɡ|ts|tʃ)$/;
@@ -367,24 +464,38 @@ export function select(src, tgt, K = 250, constrain = {}, cuts = 'all', only = n
     // (fast ganz stimmlos: so gut wie unbrauchbar)
     const leak = p => (p.voiceOn > 0.015 && canon(p.prevT) !== canon(T.prevT)
       ? (p.voiceOn > 0.5 * (p.e - p.s) ? 4 * W.burstLeak : W.burstLeak * Math.min(2, p.voiceOn / 0.02)) : 0);
-    const lctx = p => (STOPS.test(T.t) ? 0.3 * ctxCost(p.prevT, T.prevT) : ctxCost(p.prevT, T.prevT)) + leak(p);
+    // Vokale tragen die Übergänge der Nachbarlaute in sich (nach „v“ klingt „a“ anders als nach „h“)
+    // (nur Übergänge zu Lauten; Pause gegen Laut zählt wie bei allen anderen)
+    const vk = (a, b) => (isVowel(T.t) && a && b ? W.vowelCtx : 1);
+    // Knall des Verschlusses davor im Anfang dieses Lauts, wo im Ziel keiner davorsteht
+    const burstC = p => (p.burstIn && canon(p.prevT) !== canon(T.prevT) ? (p.burstIn > 0.5 * (p.e - p.s) ? 4 : 2) * W.burstLeak : 0);
+    const lctx = p => (STOPS.test(T.t) ? 0.3 * ctxCost(p.prevT, T.prevT) : vk(p.prevT, T.prevT) * ctxCost(p.prevT, T.prevT)) + leak(p) + burstC(p);
     const stressC = p => {
       if (!isVowel(T.t) || p.prom == null) return 0;
       return T.stress === 1 ? W.prom * Math.max(0, 0.5 - p.prom) : T.stress === 0 ? W.prom * 0.5 * Math.max(0, p.prom - 1) : 0;
     };
     const wordB = p => (p.word === T.word ? -W.wordBonus : 0);
     // Anlaut nur aus Anlauten, Auslaut nur aus Auslauten …; einlautige Wörter passen zu beidem halb
-    const posC = p => p.wpos === T.wpos ? 0 : (p.wpos === 'IF' || T.wpos === 'IF') && (p.wpos[0] === T.wpos[0] || p.wpos.at(-1) === T.wpos.at(-1)) ? 0.5 * W.wpos : W.wpos;
+    // Silbenendrand vor einer Endung („treibe-n-s“) klingt wie am Wortende: nur kleiner Aufschlag
+    const codaOnly = p => W.codaPos < 1 && T.srole === 'C' && p.srole === 'C' && p.wpos[0] === T.wpos[0];
+    const posC = p => p.wpos === T.wpos ? 0 : codaOnly(p) ? W.codaPos * W.wpos
+      : (p.wpos === 'IF' || T.wpos === 'IF') && (p.wpos[0] === T.wpos[0] || p.wpos.at(-1) === T.wpos.at(-1)) ? 0.5 * W.wpos : W.wpos;
     // Satzmelodie am Phrasenende: abschließend, fragend, aufzählend
-    const boundC = p => T.bound && p.bound !== T.bound ? W.bound : 0;
+    // Satzmelodie hängt am Vokal der letzten Silbe; Konsonanten tragen sie kaum
+    const boundC = p => T.bound && p.bound !== T.bound ? (W.boundVowelOnly && !isVowel(T.t) ? 0 : W.bound) : 0;
     // Lage in der Silbe: Anfangs- und Endkonsonanten klingen verschieden, Wortende ist gelängt
     const roleC = p => (p.srole && T.srole ? (T.srole !== 'N' && p.srole !== T.srole ? W.sylRole : 0)
       + (T.srole !== 'O' && p.slast !== T.slast ? W.sylLast : 0) : 0);
-    const extra = p => posC(p) + boundC(p) + roleC(p);
+    const reuse = pen.get(i);
+    const extra = p => posC(p) + boundC(p) + roleC(p) + (reuse?.has(vowelKey(src, p)) ? W.reuse : 0);
     const L = cands.map(({ p, base }) => ({ p, tc: base + lctx(p) + conf(p) + stressC(p) + wordB(p) + durC(p) + extra(p) }));
     // rechte Hälfte: nur, wenn die Behauchung bis in sie hineinreicht
-    const leakR = p => (p.voiceOn > p.mid - p.s + 0.01 && canon(p.prevT) !== canon(T.prevT) ? leak(p) : 0);
-    const R = cands.map(({ p, base }) => ({ p, tc: base + ctxCost(p.nextT, T.nextT) + conf(p) + stressC(p) + wordB(p) + durC(p) + extra(p) + leakR(p) }));
+    // … und bei kurzen Vokalen auch der Knall davor: dann klingt der ganze Vokal nach dem
+    // Verschluss („Lipp-g-en“ aus dem „ə“ von „Augen“)
+    const leakR = p => (p.voiceOn > p.mid - p.s + 0.01 && canon(p.prevT) !== canon(T.prevT) ? leak(p) : 0)
+      + (p.burstIn && isVowel(T.t) && canon(p.prevT) !== canon(T.prevT)
+        ? (p.burstIn > 0.5 * (p.e - p.s) ? 4 * W.burstLeak : p.e - p.s < W.shortV ? W.burstLeak : 0) : 0);
+    const R = cands.map(({ p, base }) => ({ p, tc: base + vk(p.nextT, T.nextT) * ctxCost(p.nextT, T.nextT) + conf(p) + stressC(p) + wordB(p) + durC(p) + extra(p) + leakR(p) }));
     steps.push(L, R);
   }
   // Beschneiden, aber Fortsetzungen erhalten (sonst gingen ganze Wörter verloren)
@@ -479,12 +590,23 @@ export function plan(src, tgt, chosen) {
       // Lauts noch behaucht: erst dort einsetzen, wo die Stimme beginnt.
       const Tp = tgt.phones[(st >> 1) - 1];
       const Tq = st % 2 === 0 ? Tp : T;            // was im Ziel vor dieser Lauthälfte steht
-      const onset = p.s + (p.voiceOn ?? 0);
-      const skip = p.voiceOn > 0 && a < onset && (st % 2 === 1 || Tq?.t !== src.phones[p.i - 1]?.t) ? Math.max(0, Math.min(onset - a, b - a - 0.01)) : 0;
+      // ebenso nach dem Knall eines Verschlusses („g“ am Anfang von „ən“ aus „Augen“)
+      const onset = p.s + Math.max(p.voiceOn ?? 0, p.burstIn ? p.burstIn + 0.012 : 0);
+      const skip = (p.voiceOn > 0 || p.burstIn > 0) && a < onset && (st % 2 === 1 || Tq?.t !== src.phones[p.i - 1]?.t) ? Math.max(0, Math.min(onset - a, b - a - 0.01)) : 0;
       segs.push({ start: a + skip, end: b, parts: [st], pauseAfter: 0, locE: p.locE });
     }
     if (st % 2 === 1 && T.pauseAfter) segs.at(-1).pauseAfter = T.pauseAfter;
     segs.at(-1).lastT = T.t;
+  }
+  // Endet ein Stück mit einem Vokal, auf den in der Quelle gleich der Vokal des nächsten
+  // Worts folgt („ihre | Augen“), steckt im Ende schon dessen Anfang: etwas früher aufhören
+  for (const seg of segs) {
+    const st = seg.parts.at(-1);
+    if (st % 2 === 0 || seg.pauseAfter) continue;
+    const p = chosen[st].p, nx = src.phones[p.i + 1];
+    if (!nx || p.next !== nx.i || nx.w === p.w || !isVowel(p.t) || !isVowel(nx.t)) continue;
+    seg.end = Math.max(seg.start + 0.02, Math.min(seg.end, p.s + 0.7 * (p.e - p.s)));
+    seg.vv = true;
   }
   return segs;
 }
@@ -657,7 +779,9 @@ export function render(src, segs, { xfade = 0.008, search = 0.006, naive = false
       prevGain = G;
     }
     seg.o1 = out.length;
-    tail = Array.from({ length: X }, (_, i) => (B[s1 + i] ?? 0) * prevGain);
+    // nach einem gekürzten Vokalende („ihre|Augen“) läuft die Fortsetzung nicht weiter,
+    // sondern klingt aus, und das nächste Stück setzt weich ein
+    tail = Array.from({ length: X }, (_, i) => (B[s1 + i] ?? 0) * prevGain * (seg.vv ? 1 - i / X : 1));
     if (seg.pauseAfter) {
       if (naive) {
         for (let i = 0; i < X; i++) out.push(tail[i] * (1 - i / X));

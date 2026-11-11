@@ -78,6 +78,9 @@ function pronounceRaw(word, lang, lex) {
   if (lang === 'en' && EN_WEAK[w])return { toks: decode(EN_WEAK[w]), source: 'lexicon' };
   if (lex.has(w)) return { toks: decode(lex.get(w)), source: 'lexicon' };
   if (lang === 'de') {
+    // Bekanntes Wort + Endung: treiben|s, Kinder|n, Hund|e – Stamm wie im Wörterbuch
+    const inf = inflected(w, lex);
+    if (inf) return inf;
     const parts = splitCompound(w, lex);
     if (parts) {
       const toks = parts.flatMap((p, i) => decode(lex.get(p)).map(x => ({ ...x, stress: i === 0 ? x.stress : x.stress ? 2 : 0 })));
@@ -89,11 +92,51 @@ function pronounceRaw(word, lang, lex) {
       const rest = w.slice(m[1].length), restParts = lex.has(rest) ? [rest] : splitCompound(rest, lex);
       const pre = decode(DE_PREFIX_TOKS[m[1]]);
       if (restParts) return { toks: [...pre, ...restParts.flatMap((p, i) => decode(lex.get(p)).map(x => ({ ...x, stress: i === 0 ? x.stress : x.stress ? 2 : 0 })))], source: 'compound' };
+      const restInf = inflected(rest, lex);                        // ge|fangen|e
+      if (restInf) return { toks: [...pre, ...restInf.toks], source: 'compound' };
       if (/^(ge|ver|zer|ent|emp)$/.test(m[1]) && !(m[1] === 'ge' && DE_GE_STEM.test(w))) return { toks: [...pre, ...rulesDe(rest)], source: 'rules' };
     }
     return { toks: rulesDe(w), source: 'rules' };
   }
   return { toks: rulesEn(w), source: 'rules' };
+}
+
+// Endungen, kürzeste zuerst (längster bekannter Stamm gewinnt)
+const DE_SUFFIX = [['s', 's'], ['n', 'n'], ['e', 'ə'], ['m', 'm'], ['t', 't'], ['es', 'ə s'], ['en', 'ə n'], ['er', 'ɐ'],
+  ['em', 'ə m'], ['st', 's t'], ['et', 'ə t'], ['ern', 'ɐ n'], ['est', 'ə s t']];
+const REVOICE = { b: ['p', 'b'], d: ['t', 'd'], g: ['k', 'ɡ'] };
+/** Mögliche Zerlegungen Stamm + Endung (kürzeste Endung zuerst), z. B. für das Lexikon des Sprechers. */
+export function deSuffixes(w) {
+  return DE_SUFFIX.filter(([suf]) => w.endsWith(suf) && w.length - suf.length >= 3)
+    .map(([suf, toks]) => ({ stem: w.slice(0, -suf.length), toks: decode(toks) }));
+}
+function inflected(w, lex) {
+  for (const [suf, toks] of DE_SUFFIX) {
+    if (!w.endsWith(suf)) continue;
+    const stem = w.slice(0, -suf.length);
+    if (stem.length < 3) continue;
+    const parts = lex.has(stem) ? [stem] : splitCompound(stem, lex);
+    const st = parts ? parts.flatMap((p, i) => decode(lex.get(p)).map(x => ({ ...x, stress: i === 0 ? x.stress : x.stress ? 2 : 0 })))
+      : prefixed(stem, lex);
+    if (!st) continue;
+    // Auslautverhärtung zurücknehmen, wenn ein Vokal folgt: Hund [t] → Hunde [d], wenig [ç] → wenige [ɡ]
+    if (/^[aeiouäöü]/.test(suf) && st.length) {
+      const last = st.at(-1), rv = REVOICE[stem.at(-1)];
+      if (rv && last.t === rv[0]) st[st.length - 1] = { ...last, t: rv[1] };
+      else if (stem.endsWith('ig') && last.t === 'ç') st[st.length - 1] = { ...last, t: 'ɡ' };
+    }
+    return { toks: [...st, ...decode(toks)], source: parts?.length === 1 ? 'lexicon' : 'compound' };
+  }
+  return null;
+}
+
+/** Unbetonte Vorsilbe + Wort aus dem Wörterbuch (ge|fangen, ver|laufen); sonst null. */
+function prefixed(w, lex) {
+  const m = w.match(DE_PREFIX);
+  if (!m || w.length - m[1].length < 3) return null;
+  const rest = w.slice(m[1].length), parts = lex.has(rest) ? [rest] : splitCompound(rest, lex);
+  if (!parts) return null;
+  return [...decode(DE_PREFIX_TOKS[m[1]]), ...parts.flatMap((p, i) => decode(lex.get(p)).map(x => ({ ...x, stress: i === 0 ? x.stress : x.stress ? 2 : 0 })))];
 }
 
 const DE_PREFIX = /^(ge|be|ver|zer|ent|emp|er)(?=[^aeiouäöüy]|[aeiouäöü][^aeiouäöüy])/;
@@ -157,7 +200,7 @@ export function rulesDe(w) {
     if ((r.startsWith('sp') || r.startsWith('st')) && atStart) { push('ʃ'); push(r[1]); i += 2; continue; }
     if (isV(c)) {
       // Endsilben -e, -en, -el, -er, -em: Schwa bzw. [ɜ]
-      if (c === 'e' && i > 0 && /^(e|en|el|em|es|et|ern|ers)$/.test(r) && out.some(x => isVowel(x.t))) {
+      if (c === 'e' && i > 0 && /^(e|en|el|em|es|et|ern|ers|ens|els|ems|ets)$/.test(r) && out.some(x => isVowel(x.t))) {
         if (r.startsWith('er')) { push('ɜ'); i += 2; if (r === 'ern' || r === 'ers') { push(r[2]); i++; } continue; }
         push('ə'); i++; continue;
       }

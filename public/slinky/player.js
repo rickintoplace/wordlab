@@ -7,12 +7,15 @@
 import { SR, mix, reach, sourceAt, speedOf, endOf } from './project.js';
 
 const POOL = 4;
+const isFirefox = () => /Firefox\//.test(navigator.userAgent) && !/Chrome\//.test(navigator.userAgent);
 const MUXER = 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.mjs';
 
 export class Player extends EventTarget {
   constructor({ timeline, voice, music, url, canvas, badge }) {
     super();
     Object.assign(this, { tl: timeline, voice, music, canvas, badge });
+    // Bildquellen: weitere Aufnahmen liegen in der Quellzeit hinter dem Hauptvideo
+    this.media = [{ url, offset: 0 }];
     this.g = canvas.getContext('2d');
     this.ctx = null;
     this.node = null;
@@ -24,7 +27,7 @@ export class Player extends EventTarget {
     this.pool = Array.from({ length: POOL }, () => {
       const v = document.createElement('video');
       v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
-      const p = { v, clip: null };
+      const p = { v, clip: null, k: 0 };
       // Nach jeder Suche das Bild festhalten: Rückwärts wird ständig gesucht, und
       // ein suchendes Element liefert kein Bild – ohne das stünde das Bild still.
       v.addEventListener('seeked', () => { this.capture(p); if (!this.playing) this.draw(this.tl.playhead); });
@@ -36,6 +39,26 @@ export class Player extends EventTarget {
     const v0 = this.pool[0].v;
     v0.addEventListener('loadedmetadata', () => this.size(), { once: true });
   }
+
+  /** Bildquellen setzen: [{url (oder null, wenn die Datei fehlt), offset}] in Quellzeit. */
+  setMedia(list) {
+    this.media = list;
+    for (const p of this.pool) if (p.k !== 0 || !list[0]?.url) { p.k = -1; p.clip = null; }
+    this.sync(this.tl.playhead);
+  }
+  /** Quellzeit → welche Aufnahme, und die Zeit darin. */
+  locate(s) {
+    let k = 0;
+    for (let i = 1; i < this.media.length; i++) if (s >= this.media[i].offset - 0.5) k = i;
+    return { k, t: s - this.media[k].offset };
+  }
+  /** Element auf eine andere Aufnahme umstellen. */
+  load(p, k) {
+    p.k = k; p.snap = null; p.shot = null;
+    const url = this.media[k]?.url;
+    if (url) { if (p.v.src !== url) p.v.src = url; } else p.v.removeAttribute('src');
+  }
+  has(k) { return !!this.media[k]?.url; }
 
   size() {
     const v = this.pool[0].v, w0 = v.videoWidth || 1280, h0 = v.videoHeight || 720, k = Math.min(1, 1280 / w0);
@@ -155,14 +178,19 @@ export class Player extends EventTarget {
     const want = new Set(vis.map(x => x.c.id));
     for (const p of this.pool) if (p.clip && !want.has(p.clip)) { p.clip = null; if (!running) p.v.pause(); }
     for (const { c } of vis) {
+      const L = this.locate(sourceAt(c, t));
       let p = this.pool.find(q => q.clip === c.id);
+      if (p && p.k !== L.k) { p.clip = null; p = null; }
+      if (!this.has(L.k)) continue;                  // Datei dieser Aufnahme nicht geladen
       if (!p) {
-        const s = sourceAt(c, t), free = this.pool.filter(q => !q.clip);
+        const free = this.pool.filter(q => !q.clip);
         if (!free.length) continue;
-        p = free.reduce((a, q) => (Math.abs(q.v.currentTime - s) < Math.abs(a.v.currentTime - s) ? q : a));
+        const same = free.filter(q => q.k === L.k), cand = same.length ? same : free;
+        p = cand.reduce((a, q) => (Math.abs(q.v.currentTime - L.t) < Math.abs(a.v.currentTime - L.t) ? q : a));
+        if (p.k !== L.k) this.load(p, L.k);
         p.clip = c.id;
       }
-      const v = p.v, s = sourceAt(c, t), sp = speedOf(c);
+      const v = p.v, s = L.t, sp = speedOf(c);
       if (running && !c.reverse) {
         if (Math.abs(v.playbackRate - sp) > 1e-3) v.playbackRate = sp;
         if (v.paused) { if (Math.abs(v.currentTime - s) > 0.05) v.currentTime = s; v.play().catch(() => {}); }
@@ -176,9 +204,9 @@ export class Player extends EventTarget {
     // Was gleich kommt, schon einmal hinstellen (nur mit freien Elementen)
     if (running) {
       for (const c of this.upcoming(t, 0.6)) {
-        const s = sourceAt(c, c.at);
-        if (this.pool.some(q => Math.abs(q.v.currentTime - s) < 0.05)) continue;
-        const q = this.pool.find(x => !x.clip && x.v.paused && !x.v.seeking);
+        const { k, t: s } = this.locate(sourceAt(c, c.at));
+        if (!this.has(k) || this.pool.some(q => q.k === k && Math.abs(q.v.currentTime - s) < 0.05)) continue;
+        const q = this.pool.find(x => !x.clip && x.k === k && x.v.paused && !x.v.seeking);
         if (!q) break;
         q.v.currentTime = s;
       }
@@ -227,8 +255,8 @@ export class Player extends EventTarget {
 
   /** Ersatzbild, solange ein Element noch sucht: das Bild eines anderen Elements an fast derselben Stelle. */
   lastFrame(c) {
-    const s = sourceAt(c, this.tl.playhead);
-    const q = this.pool.filter(x => x.snap && x.shot != null).sort((x, y) => Math.abs(x.shot - s) - Math.abs(y.shot - s))[0];
+    const { k, t: s } = this.locate(sourceAt(c, this.tl.playhead));
+    const q = this.pool.filter(x => x.k === k && x.snap && x.shot != null).sort((x, y) => Math.abs(x.shot - s) - Math.abs(y.shot - s))[0];
     return q && Math.abs(q.shot - s) < 0.5 ? q.snap : null;
   }
 
@@ -257,7 +285,7 @@ export class Player extends EventTarget {
     for (const { c } of this.visible(t)) {
       const p = this.pool.find(q => q.clip === c.id);
       if (!p) continue;
-      const s = sourceAt(c, t);
+      const s = this.locate(sourceAt(c, t)).t;
       if (p.v.seeking || Math.abs(p.v.currentTime - s) > 1e-3) {
         if (!p.v.seeking) p.v.currentTime = s;
         waits.push(new Promise(r => { const done = () => { p.v.removeEventListener('seeked', done); r(); }; p.v.addEventListener('seeked', done); setTimeout(done, 3000); }));
@@ -275,21 +303,50 @@ export class Player extends EventTarget {
   async render(onProgress, signal, span = {}) {
     this.stop();
     const t0 = span.t0 ?? 0, t1 = span.t1 ?? this.tl.end();
+    this.mark = span.watermark ? await watermark() : null;
     if (window.VideoEncoder && window.AudioEncoder) {
       try { return await this.renderMp4(onProgress, signal, t0, t1); } catch (err) { if (signal?.aborted) throw err; console.warn('WebCodecs:', err); }
     }
     return this.record(onProgress, signal, t0, t1);
   }
 
+  /** Dezentes „Made with Slinky-Cut“ unten rechts ins aktuelle Bild (nur beim Ausgeben). */
+  stamp() {
+    if (!this.mark) return;
+    const g = this.canvas.getContext('2d'), W = this.canvas.width, H = this.canvas.height;
+    const fs = Math.max(11, Math.round(H * 0.028)), pad = Math.round(H * 0.03), logo = Math.round(fs * 1.35);
+    g.save();
+    g.font = `600 ${fs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+    g.textBaseline = 'middle';
+    const text = 'Made with Slinky-Cut', tw = g.measureText(text).width;
+    const y = H - pad - logo / 2, x = W - pad - tw;
+    g.globalAlpha = 0.7;
+    g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = Math.round(fs * 0.4);
+    g.fillStyle = '#fff';
+    g.fillText(text, x, y);
+    if (this.mark.img) g.drawImage(this.mark.img, x - logo - Math.round(fs * 0.35), y - logo / 2, logo, logo);
+    g.restore();
+  }
+
   /** Bereich [from, to) der Zeitleiste als MP4; die Datei beginnt bei 0. */
   async renderMp4(onProgress, signal, from, to) {
     const { Muxer, ArrayBufferTarget } = await import(MUXER);
     const W = this.canvas.width, H = this.canvas.height, FPS = 30, end = to - from;
-    const vcands = [['avc', 'avc1.4d0028'], ['avc', 'avc1.42001f'], ['vp9', 'vp09.00.31.08']];
+    // Constrained Baseline zuerst (keine B-Frames, die der MP4-Muxer nicht abbildet – in
+    // Firefox gab es sonst Klötzchen), Stufe nach Bildgröße; Echtzeit-Modus und Software-
+    // Kodierer, wo möglich: die sind verlässlicher als manche Hardware-Kodierer.
+    const level = W * H > 1280 * 720 ? '28' : '1f';
+    const avc = [['avc', `avc1.42e0${level}`], ['avc', `avc1.4d00${level === '28' ? '28' : '1f'}`]], vp9 = [['vp9', 'vp09.00.31.08']];
+    // Firefox (OpenH264) beginnt mit jedem Schlüsselbild einen neuen Parametersatz, den die
+    // MP4-Kopfdaten nicht kennen: Abspieler zeigen danach Klötzchen (gemessen, Firefox 159).
+    // Sein VP9 ist sauber und schärfer – dort also VP9 im MP4.
+    const vcands = isFirefox() ? [...vp9, ...avc] : [...avc, ...vp9];
     let vc = null;
-    for (const [kind, codec] of vcands) {
-      const cfg = { codec, width: W, height: H, bitrate: 6e6, framerate: FPS };
-      if ((await VideoEncoder.isConfigSupported(cfg)).supported) { vc = { kind, cfg }; break; }
+    search: for (const [kind, codec] of vcands) {
+      for (const extra of kind === 'vp9' ? [{}] : [{ hardwareAcceleration: 'prefer-software', latencyMode: 'realtime' }, { latencyMode: 'realtime' }, {}]) {
+        const cfg = { codec, width: W, height: H, bitrate: 6e6, framerate: FPS, ...extra, ...(kind === 'avc' ? { avc: { format: 'avc' } } : {}) };
+        try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) { vc = { kind, cfg }; break search; } } catch { /* nächste */ }
+      }
     }
     let ac = null;
     for (const [kind, codec] of [['aac', 'mp4a.40.2'], ['opus', 'opus']]) {
@@ -297,6 +354,7 @@ export class Player extends EventTarget {
       if ((await AudioEncoder.isConfigSupported(cfg)).supported) { ac = { kind, cfg }; break; }
     }
     if (!vc || !ac) throw new Error('no suitable encoder');
+    console.info('Slinky-Cut export:', vc.cfg.codec, vc.cfg, ac.cfg.codec);
     const target = new ArrayBufferTarget();
     const muxer = new Muxer({ target, fastStart: 'in-memory', firstTimestampBehavior: 'offset',
       video: { codec: vc.kind, width: W, height: H }, audio: { codec: ac.kind, sampleRate: SR, numberOfChannels: 1 } });
@@ -320,8 +378,9 @@ export class Player extends EventTarget {
       const t = i / FPS;
       this.tl.setPlayhead(from + t);
       await this.frameAt(from + t);
+      this.stamp();
       const vf = new VideoFrame(this.canvas, { timestamp: Math.round(t * 1e6), duration: Math.round(1e6 / FPS) });
-      venc.encode(vf, { keyFrame: i % (FPS * 2) === 0 });
+      venc.encode(vf, { keyFrame: i % FPS === 0 });
       vf.close();
       while (venc.encodeQueueSize > 8) await new Promise(r => setTimeout(r, 5));
       onProgress?.((i + 1) / frames);
@@ -357,7 +416,7 @@ export class Player extends EventTarget {
       const loop = () => {
         const t = Math.max(0, ctx.currentTime - t0);
         if (t >= end || signal?.aborted) { this.playing = false; resolve(); return; }
-        this.sync(from + t, true); this.draw(from + t);
+        this.sync(from + t, true); this.draw(from + t); this.stamp();
         onProgress?.(t / end);
         requestAnimationFrame(loop);
       };
@@ -369,6 +428,18 @@ export class Player extends EventTarget {
     if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
     return { blob: new Blob(parts, { type: mimeType.split(';')[0] }), ext: mimeType.startsWith('video/mp4') ? 'mp4' : 'webm' };
   }
+}
+
+/** Logo fürs Wasserzeichen (einmal geladen). */
+let markImg = null;
+function watermark() {
+  markImg ??= new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = new URL('./favicon.svg', import.meta.url).href;
+  });
+  return markImg.then(img => ({ img }));
 }
 
 /** Wie envelope, aber linear – fürs Bild (Abblenden wirkt linear natürlicher). */

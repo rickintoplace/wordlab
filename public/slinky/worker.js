@@ -12,6 +12,7 @@ import { alignWords } from './align.js';
 import { buildSource, targetPhones, select, plan, render, wholeWords, wordKey, syllableBounds, splitWords } from './engine.js';
 import { isVowel, soundClass, canon } from './phones.js';
 import * as cache from './cache.js';
+import { cleanMusic } from './dsp.js';
 
 const post = (msg, transfer) => self.postMessage(msg, transfer ?? []);
 const stage = (step, state, extra = {}) => post({ type: 'stage', step, state, ...extra });
@@ -20,14 +21,41 @@ const SR = 48000;
 
 let current = null;          // { lang, lex, src }
 
+// Nur für Testskripte: Schnittkosten frei vs. mit enthaltenem Wort
+if (globalThis.SLINKY_DEBUG) globalThis.__slinky = {
+  stemReport(text) {
+    const base = cut(text, null, {});
+    return base.tgt.words.map((w, wi) => {
+      if (base.instances[wi]?.length) return null;
+      const free = cut(text, null, { words: { [wi]: -1 } }).total;
+      const sts = stems(base.tgt, wi, null, 6).map(st => {
+        const pins = Object.fromEntries(st.map);
+        return `${st.word}@${st.at.toFixed(0)} ${(cut(text, null, { words: { [wi]: -1 }, pins }).total - free).toFixed(1)}`;
+      });
+      return sts.length ? `${w}: frei ${free.toFixed(1)} · ${sts.join(' · ')}` : null;
+    }).filter(Boolean);
+  },
+};
+
 self.onmessage = async ({ data: m }) => {
   try {
     if (m.type === 'lookup') {
       const hit = await cache.get(m.key);
-      if (hit?.alignVersion === ALIGN_VERSION) await prepare(hit);
-      else if (hit?.raw) await build({ key: m.key, lang: hit.lang, ...hit.raw, voice16: hit.voice16, voice48: hit.voice48, music48: hit.music48 });
+      if (hit?.alignVersion === ALIGN_VERSION) {
+        // gespeicherte Analyse von vor der Musik-Filterung: hier nachholen (einmal)
+        if (hit.music48 && (hit.musicClean ?? 0) < MUSIC_CLEAN) {
+          stage('align', 'running');
+          hit.music48 = cleanVoiceFrom(hit.music48, hit.voice48, hit.phones);
+          hit.musicClean = MUSIC_CLEAN;
+          await cache.put(m.key, hit).catch(() => {});
+          stage('align', 'done', { phones: hit.phones.length });
+        }
+        await prepare(hit);
+      }
+      else if (hit?.raw) await build({ key: m.key, lang: hit.lang, ...hit.raw, voice16: hit.voice16, voice48: hit.voice48, music48: hit.music48, musicClean: hit.musicClean, sources: hit.sources ?? null });
       else post({ type: 'missing' });
     } else if (m.type === 'build') await build(m);
+    else if (m.type === 'addSource') await addSource(m);
     else if (m.type === 'mix') post(take(m), []);
     else if (m.type === 'variants') variants(m);
     else if (m.type === 'sylVariants') sylVariants(m);
@@ -41,23 +69,68 @@ self.onmessage = async ({ data: m }) => {
 
 // Ändert sich das Verorten (Lexikon, Grenzen), wird es aus den gespeicherten
 // Modell-Ergebnissen neu gerechnet – ohne die langsamen Stufen zu wiederholen.
-const ALIGN_VERSION = 4;   // 3: Lexikon wählt die Standardform (wir → [viːɐ̯], nicht [mɐ]); 4: Zahlen werden ausgesprochen
+const ALIGN_VERSION = 5;   // 3: Lexikon wählt die Standardform (wir → [viːɐ̯], nicht [mɐ]); 4: Zahlen werden ausgesprochen; 5: Längen aus dem Wörterbuch, Vokal-Vokal-Grenzen
 
+const MUSIC_CLEAN = 2;      // Fassung der Stimmrest-Filterung der Musik
 const lexicon = lang => fetch(`/data/slinky/lex-${lang}.txt?v=${ALIGN_VERSION}`).then(r => r.text()).then(parseLexicon);
 
-async function build({ key, lang, words, post: P, V, vocab, voice16, voice48, music48 }) {
+/** Stimmreste aus der Musik; die Zischlaute der Stimme kennen wir aus dem Alignment. */
+function cleanVoiceFrom(music48, voice48, phones) {
+  const hiss = phones.filter(p => /^(s|z|ʃ|ʒ|ts|tʃ|f|v|ç|x|t|k|p|h)$/.test(p.t)).map(p => [p.s - 0.02, p.e + 0.02]);
+  return cleanMusic(music48, voice48, { hiss });
+}
+
+/**
+ * Weitere Aufnahme desselben Sprechers anhängen: Ton, Wörter und Laut-Wahrscheinlichkeiten
+ * werden hinter die bisherigen gelegt (mit einer Sekunde Stille), dann wird alles neu verortet.
+ * Für den Schnitt ist es danach eine einzige, längere Quelle; `sources` sagt, wo welche liegt.
+ */
+async function addSource({ key, name, size, mainName, mainSize, words, post: P, V, vocab, voice16, voice48, music48 }) {
+  const hit = await cache.get(key);
+  if (!hit?.raw) throw new Error('The analysis of this video is not stored any more. Reload the video first.');
+  if (hit.raw.V !== V) throw new Error('The sound model changed since this video was analysed. Analyse it again first.');
+  const len1 = hit.voice16.length / 16000;
+  const offset = Math.ceil((len1 + 1) / 0.02) * 0.02;            // auf Laut-Raster (20 ms)
+  const o16 = Math.round(offset * 16000), o48 = Math.round(offset * 48000), oF = Math.round(offset / 0.02);
+  const cat = (a, b, o) => { const out = new Float32Array(o + b.length); out.set(a); out.set(b, o); return out; };
+  const frames1 = hit.raw.post.length / V;
+  const post = new Float32Array((oF + P.length / V) * V).fill(-1e9);
+  post.set(hit.raw.post);
+  const blank = Math.max(0, vocab.indexOf('<pad>'));
+  for (let f = frames1; f < oF; f++) post[f * V + blank] = 0;     // Lücke: „nichts gesagt“
+  post.set(P, oF * V);
+  const sources = [...(hit.sources ?? [{ name: mainName, size: mainSize, offset: 0, duration: len1 }]),
+    { name, size, offset, duration: voice16.length / 16000 }];
+  const music = hit.music48 ? cat(hit.music48, music48 ?? new Float32Array(voice48.length), o48) : null;
+  await build({ key, lang: hit.lang, words: [...hit.raw.words, ...words.map(w => ({ ...w, s: w.s + offset, e: w.e + offset }))],
+    post, V, vocab, voice16: cat(hit.voice16, voice16, o16), voice48: cat(hit.voice48, voice48, o48), music48: music,
+    musicClean: hit.musicClean ?? 0, cleanFrom: music48 ? offset : 0, sources });
+}
+
+async function build({ key, lang, words, post: P, V, vocab, voice16, voice48, music48, musicClean = 0, cleanFrom = 0, sources = null }) {
   stage('align', 'running');
   const lex = await lexicon(lang);
   const al = alignWords({ words, post: P, V, vocab, audio16: voice16,
     pronounce: w => pronounceSync(w, lang, lex).toks, progress: (d, t) => progress('align', d / t) });
+  // Stimmreste aus der Musik (einmal; gespeicherte Analysen holen es hier nach). Die
+  // Zischlaute der Stimme kennen wir jetzt aus dem Alignment.
+  if (music48 && musicClean < MUSIC_CLEAN) {
+    music48 = cleanVoiceFrom(music48, voice48, al.phones);
+    musicClean = MUSIC_CLEAN;
+  } else if (music48 && cleanFrom > 0) {
+    // nur die neu angehängte Aufnahme (die alte ist schon gefiltert)
+    const o = Math.round(cleanFrom * 48000);
+    const ph = al.phones.filter(p => p.s >= cleanFrom).map(p => ({ ...p, s: p.s - cleanFrom, e: p.e - cleanFrom }));
+    music48.set(cleanVoiceFrom(music48.subarray(o), voice48.subarray(o), ph), o);
+  }
   stage('align', 'done', { phones: al.phones.length });
-  const entry = { lang, words: al.words, phones: al.phones, voice48, voice16, music48, alignVersion: ALIGN_VERSION,
-    raw: { words, post: P, V, vocab } };
+  const entry = { lang, words: al.words, phones: al.phones, voice48, voice16, music48, musicClean, alignVersion: ALIGN_VERSION,
+    raw: { words, post: P, V, vocab }, ...(sources ? { sources } : {}) };
   await cache.put(key, entry).catch(() => {});
   await prepare(entry, lex);
 }
 
-async function prepare({ lang, words, phones, voice16, voice48, music48 }, lex = null) {
+async function prepare({ lang, words, phones, voice16, voice48, music48, sources = null }, lex = null) {
   stage('prepare', 'running');
   lex ??= await lexicon(lang);
   const src = buildSource({ lang, words, phones, a16: voice16, a48: voice48 });
@@ -76,7 +149,7 @@ async function prepare({ lang, words, phones, voice16, voice48, music48 }, lex =
   const music = music48 ? music48.slice() : null, voice = voice48.slice();
   post({ type: 'ready', lang,
     words: src.words.map(w => ({ w: w.w, s: w.as ?? w.s, e: w.ae ?? w.e, spk: w.spk ?? 0 })),
-    speakers, hasMusic: !!music, music, voice, accent: [...src.accent] },
+    speakers, hasMusic: !!music, music, voice, accent: [...src.accent], sources },
   [voice.buffer, ...(music ? [music.buffer] : [])]);
 }
 
@@ -129,6 +202,26 @@ function cut(text, speaker, force = {}) {
   for (const [ti, ban] of Object.entries(F.avoid)) {
     const T = tgt.phones[ti], b = new Set(ban);
     if (T) constrain[ti] = p => !b.has(p.i) && fits(p, T) && p.e - p.s >= 0.015 && p.lp > -4;
+  }
+  // Neues Wort, in dem ein Wort aus dem Video ganz steckt („treibens“): dieses Wort am Stück
+  // nehmen und nur den Rest bauen – aber nur, wenn es kaum schlechter passt als frei gebaut
+  // (Hörtest: „treiben“ + s klar besser, bei deutlich teurerem Anschluss lieber frei)
+  if (!globalThis.SLINKY_NO_STEMS) {
+    let base = null;
+    tgt.words.forEach((_, wi) => {
+      if (instances[wi]?.length || wi in F.words || phonesOf(wi).some(ti => ti in F.pins)) return;
+      const sts = stems(tgt, wi, speaker, 3);
+      if (!sts.length) return;
+      base ??= select(src, tgt, 250, constrain, 'all', only).total;
+      let best = null;
+      for (const st of sts.filter(x => x.L === sts[0].L || x.word === sts[0].word)) {
+        const c = { ...constrain };
+        for (const [ti, pi] of st.map) c[ti] = p => p.i === pi;
+        const t = select(src, tgt, 250, c, 'all', only).total;
+        if (!best || t < best.t) best = { t, c };
+      }
+      if (best && best.t - base <= STEM_MARGIN) { Object.assign(constrain, best.c); base = best.t; }
+    });
   }
   const { chosen, stepCost, total } = select(src, tgt, 250, constrain, 'all', only);
   const segs = plan(src, tgt, chosen);
@@ -273,6 +366,43 @@ function option(text, speaker, force, wi, label, kind, seen, cur, extra = {}) {
     current: sig === cur, picks, fit: r.total, feel: feel(r, wi), ...extra };
 }
 
+/**
+ * Wörter aus dem Video, die als Ganzes im Zielwort stecken (am Anfang, am Ende oder
+ * mittendrin; mindestens drei Laute und die Hälfte des Worts, aber nicht das ganze):
+ * „treiben“ + s, ge + „fangen“ + e. Je Wort das am sichersten erkannte Vorkommen,
+ * die längsten zuerst, höchstens drei. rest = Buchstaben davor und danach.
+ */
+const STEM_MARGIN = 3.0;   // so viel teurer (Schnittkosten) darf „Wort am Stück + Rest“ sein
+function stems(tgt, wi, speaker, perWord = 1) {
+  const { src } = current;
+  const only = bySpeaker(src, speaker);
+  const T = tgt.phones.map((p, ti) => [p, ti]).filter(([p]) => p.w === wi);
+  const n = T.length, key = tgt.words[wi].replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  if (n < 4) return [];
+  const same = (p, t) => canon(p.real) === canon(t.t) || p.cls === t.cls;
+  const best = new Map();
+  src.words.forEach(sw => {
+    if (sw.ps < 0 || (only && !only(src.phones[sw.ps]))) return;
+    const L = sw.pe - sw.ps + 1;
+    if (L < 4 || L < n / 2 || L >= n) return;                 // kurze Wörter („ist“ in „frisst“) zählen nicht
+    const ps = src.phones.slice(sw.ps, sw.pe + 1);
+    if (ps.some(p => p.e - p.s < 0.012)) return;
+    let off = -1;
+    for (let o = 0; o + L <= n && off < 0; o++) if (ps.every((p, k) => same(p, T[o + k][0]))) off = o;
+    if (off < 0) return;
+    const word = sw.w.replace(/[^\p{L}\p{N}'-]/gu, ''), wk = word.toLowerCase();
+    // Buchstaben davor/danach, wenn die Schreibung passt, sonst die Laute
+    const at = key.indexOf(wk);
+    const before = at >= 0 ? key.slice(0, at) : T.slice(0, off).map(([t]) => t.t).join('');
+    const after = at >= 0 ? key.slice(at + wk.length) : T.slice(off + L).map(([t]) => t.t).join('');
+    const conf = ps.reduce((x, p) => x + p.lp, 0) / L;
+    const list = best.get(wk) ?? best.set(wk, []).get(wk);
+    list.push({ word, before, after, L, conf, at: sw.as ?? sw.s, map: ps.map((p, k) => [T[off + k][1], p.i]) });
+  });
+  return [...best.values()].flatMap(l => l.sort((x, y) => y.conf - x.conf).slice(0, perWord))
+    .sort((x, y) => y.L - x.L || y.conf - x.conf).slice(0, 3 * perWord);
+}
+
 /** Die Wörter um ein Stück Quelle herum (zwei davor, zwei danach), zum Wiedererkennen. */
 function contextOf(used) {
   const { src } = current;
@@ -307,8 +437,23 @@ function variants({ id, text, speaker, force = {}, wi }) {
   const without = { ...F, words: { ...F.words }, pins: Object.fromEntries(Object.entries(F.pins).filter(([ti]) => base.tgt.phones[ti]?.w !== wi)) };
   const push = o => o && opts.push(o);
   // Die aktuelle Fassung zuerst, damit man vergleichen kann
+  // Steckt ein ganzes Wort aus dem Video darin (Vorgabe bei neuen Wörtern), so heißt es auch so
+  const stemNow = cur.quality === 'whole' ? null : stems(base.tgt, wi, speaker, 3).find(st => st.map.every(([, pi]) => cur.used.includes(pi)));
+  const curInfo = cur.quality === 'whole' ? { kind: 'whole', word: cur.spanned.join(' '), at: cur.at, context: contextOf(cur.used) }
+    : stemNow ? { kind: 'stem', word: stemNow.word, before: stemNow.before, after: stemNow.after, at: stemNow.at, context: contextOf([stemNow.map[0][1]]) }
+    : { kind: 'mix', from: cur.from };
   push(option(text, speaker, F, wi, `Current: ${cur.quality === 'whole' ? `“${cur.spanned.join(' ')}” at ${clock(cur.at)}` : `from ${cur.from.join(' + ')}`}`, 'current', seen, curSig,
-    { info: cur.quality === 'whole' ? { kind: 'whole', word: cur.spanned.join(' '), at: cur.at, context: contextOf(cur.used) } : { kind: 'mix', from: cur.from } }));
+    { info: curInfo }));
+  // 0. ein Wort aus dem Video, das ganz im Zielwort steckt, und der Rest dazugebaut
+  //    („treiben“ + s, ge + „fangen“ + e)
+  for (const st of stems(base.tgt, wi, speaker).filter(st => !st.map.every(([, pi]) => cur.used.includes(pi)))) {
+    const pins = { ...without.pins };
+    st.map.forEach(([ti, pi]) => { pins[ti] = pi; });
+    const o = option(text, speaker, { ...without, words: { ...without.words, [wi]: -1 }, pins }, wi,
+      [st.before, `“${st.word}”`, st.after].filter(Boolean).join(' + '), 'stem', seen, curSig,
+      { at: st.at, info: { kind: 'stem', word: st.word, before: st.before, after: st.after, at: st.at, context: contextOf([st.map[0][1]]) } });
+    if (o) opts.push(o);
+  }
   // 1. jedes Vorkommen des ganzen Worts (beim Sprecher), mit Zeitstempel und dem Satz drumherum;
   //    das am besten passende zuerst (geringste Schnittkosten im ganzen Satz)
   const whole = [];
@@ -327,13 +472,16 @@ function variants({ id, text, speaker, force = {}, wi }) {
   opts.push(...whole.sort((a, b) => a.fit - b.fit).slice(0, 7));
   // 2. aus Teilen gebaut, dann weitere Bauweisen, die die Laute der vorigen meiden
   let avoid = [];
-  for (let k = 0; k < 4 && opts.length < 10; k++) {
+  for (let k = 0; k < 6 && opts.length < 12; k++) {
     const f = k === 0 ? -1 : { avoid };
     const o = option(text, speaker, { ...without, words: { ...without.words, [wi]: f } }, wi, '', 'built', seen, curSig);
     if (o) { o.label = `Built from ${o.words[wi].from.join(' + ')}`; o.info = { kind: 'mix', from: o.words[wi].from }; opts.push(o); }
     const used = (o ?? opts.at(-1))?.words[wi].used ?? cur.used;
-    // nur die Laute meiden, die nicht am Wortrand hängen: so ändert sich wirklich etwas
-    avoid = [...new Set([...avoid, ...used])];
+    // Die nächste Bauweise meidet diese Laute und den Vokal aus denselben Quellwörtern
+    // (alle Vorkommen, z. B. jedes „Doch“): so kommt der Kern des Worts wirklich woanders her
+    const keys = new Set(used.filter(i => isVowel(src.phones[i].t)).map(i => wordKey(src.words[src.phones[i].w].w)));
+    const sameVowel = src.phones.filter(q => isVowel(q.t) && keys.has(wordKey(src.words[q.w].w))).map(q => q.i);
+    avoid = [...new Set([...avoid, ...used, ...sameVowel])];
   }
   post({ type: 'variants', id, wi, options: opts }, opts.map(o => o.audio.buffer));
 }

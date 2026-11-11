@@ -35,6 +35,7 @@ export function canon(t) {
   if (!t) return t;
   if (/^(r|ʁ|ɾ|ʀ|ɹ)$/.test(t)) return 'r';
   if (/^(ɐ|ɜ|ɚ|ɐ̯)$/.test(t)) return 'ɐ';
+  if (t === 'ɑː') return 'aː';
   const c = soundClass(t);
   if (c === 'OY' || c === 'AI' || c === 'AU') return c;
   return t;

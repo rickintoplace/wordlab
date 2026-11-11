@@ -101,12 +101,22 @@ The editor (`timeline.js`, `player.js`, `project.js`) has tracks for video,
 lip-sync snippets, voice and music; clips can be moved, trimmed, split, faded,
 crossfaded (X), reversed and sped up, and every word or syllable can be swapped
 for alternatives or retyped. L puts the matching mouth from the video on the Lips track. I and O mark a range in the ruler; export then
-offers just that range.
+offers just that range. “+ Audio” / “+ Video” bring back the original voice,
+music or video on a track.
+
+“Save project” writes a `.slinky` file (`projfile.js`): tracks, clips and
+sentences with their sound, optionally with the whole analysis so another
+computer can skip it. Load the same video there, then “Open project”.
+“Add source” appends another recording of the same speaker (e.g. another
+episode): it is analysed the same way, its voices are matched to the known ones
+by voice embedding (you confirm), and from then on cuts can use its words and
+sounds; its picture plays where its pieces are used.
 
 “Ideas” (`ideas.js`) asks a language model for lines made mostly of words the
 speaker actually says, with at most two words that have to be built from their
 syllables. Every line is cut, and only the funniest whose built words still fit
-together (low join cost) are kept.
+together (low join cost) are kept. “AI rewrite” on selected voice clips does the
+same for just that passage and replaces it with the version you pick.
 
 ### Scripting it
 

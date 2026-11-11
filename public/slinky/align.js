@@ -261,6 +261,33 @@ export function alignWords({ words, post: P, V, vocab, audio16, pronounce, progr
     }
   });
 
+  // Vokal an Vokal über eine Wortgrenze („ihre | Augen“): Das Modell setzt die Grenze oft
+  // zu spät, dann klingt das „au“ im „ihre“ mit. Deutsch setzt dort einen Knacklaut (kurzer
+  // Einbruch der Lautstärke); sonst nimmt man die Stelle des stärksten Klangwechsels.
+  const VOW = /^(a|e|i|o|u|y|ø|œ|ɛ|ɪ|ɔ|ʊ|ɑ|æ|ʌ|ɒ|ə|ɐ|ɜ)/;
+  for (let i = 0; i + 1 < phones.length && !globalThis.SLINKY_NO_VV; i++) {
+    const p = phones[i], nx = phones[i + 1];
+    if (p.pauseAfter || p.w === nx.w || !VOW.test(p.t) || !VOW.test(nx.t)) continue;
+    const a = Math.round((p.s + 0.3 * (p.e - p.s)) * FR), b = Math.round((nx.e - 0.3 * (nx.e - nx.s)) * FR);
+    if (b - a < 6) continue;
+    let arg = -1, lo = Infinity;
+    for (let f = a + 2; f <= b - 2; f++) if (E[f] < lo) { lo = E[f]; arg = f; }
+    const edge = Math.min(Math.max(...E.slice(a, a + 3)), Math.max(...E.slice(b - 2, b + 1)));
+    if (edge - lo < 4) {
+      // kein Knacklaut: größter Sprung der Klangfarbe (MFCC, über 2 Frames)
+      let best = -1; arg = -1;
+      for (let f = a + 2; f <= b - 2; f++) {
+        let d = 0;
+        for (let c = 1; c < feat.nC; c++) d += (feat.mfcc[(f + 2) * feat.nC + c] - feat.mfcc[(f - 2) * feat.nC + c]) ** 2;
+        if (d > best) { best = d; arg = f; }
+      }
+    }
+    if (arg < 0) continue;
+    const t = +(arg / FR).toFixed(3);
+    if (t - p.s < 0.02 || nx.e - t < 0.02) continue;
+    p.e = t; nx.s = t;
+  }
+
   phones.forEach((p, i) => { const w = outWords[p.w]; if (w.ps < 0) w.ps = i; w.pe = i; });
   for (const w of outWords) if (w.ps >= 0) { w.as = phones[w.ps].s; w.ae = phones[w.pe].e; }
   return { words: outWords, phones, sil: SIL, feat };

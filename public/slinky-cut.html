@@ -6,7 +6,7 @@
   <title>Slinky-Cut | wordlab</title>
   <meta name="description" content="Make someone in a video say something new, cut together from their own words and sounds. Runs in your browser.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Slinky-Cut — sentence mixing from a video">
+  <meta property="og:title" content="Slinky-Cut | sentence mixing from a video">
   <meta property="og:description" content="Load a video, type a sentence, and hear the speaker say it, cut from their own words, syllables and sounds.">
   <meta property="og:url" content="https://wordlab.rickinto.place/slinky-cut">
   <meta name="twitter:card" content="summary">
@@ -75,6 +75,12 @@
           <div class="sc-row">
             <button id="analyze" class="pill-button" type="button">Analyse video</button>
             <button id="other" class="sc-link" type="button">Other file</button>
+            <button id="proj-open" class="sc-link" type="button" title="Continue a project saved with “Save project” (also from another computer)">Open project</button>
+            <button id="proj-save" class="sc-link" type="button" title="Save clips, sentences and tracks as a file" hidden>Save project</button>
+            <input id="proj-file" type="file" accept=".slinky" hidden>
+            <button id="src-add" class="sc-link" type="button" title="Use the voice from another video or recording of the same speaker (e.g. another episode)" hidden>Add source</button>
+            <input id="src-file" type="file" accept="video/*,audio/*" hidden>
+            <input id="src-media" type="file" accept="video/*,audio/*" hidden>
           </div>
           <p class="sc-note" id="estimate"></p>
         </div>
@@ -97,6 +103,7 @@
 
     <!-- 3. Schneiden -->
     <section class="sc-studio" id="studio" hidden>
+      <div class="sc-srcbox" id="src-box" hidden></div>
       <div class="sc-desk">
         <div class="sc-monitor">
           <div class="sc-screen" id="screen">
@@ -126,6 +133,7 @@
                   <button type="button" role="radio" data-scope="range" aria-checked="false" id="export-range">Range</button>
                 </div>
                 <small class="sc-scope-hint" id="export-range-hint">Mark a range with I and O, or right-click the ruler.</small>
+                <label class="sc-wmark"><input type="checkbox" id="export-mark" checked> “Made with Slinky-Cut” in the corner</label>
                 <button type="button" data-export="video">Video <small id="export-video-hint">MP4, frame by frame</small></button>
                 <button type="button" data-export="wav">Sound only (WAV)</button>
               </div>
@@ -138,7 +146,7 @@
             <form class="sc-say" id="say" autocomplete="off">
               <label for="text" class="sc-label">What should they say?</label>
               <div class="sc-say-row">
-                <input id="text" type="text" spellcheck="true" placeholder="Type a sentence">
+                <input id="text" type="text" spellcheck="true" autocomplete="off" placeholder="Type a sentence">
                 <button class="sc-go" type="submit" title="Cut it: the result appears below, ready to drag onto a track"><span data-icon="scissors" data-icon-size="15px"></span> Cut it</button>
               </div>
               <div class="sc-say-opts">
@@ -154,7 +162,7 @@
                   <datalist id="ideas-models"></datalist>
                 </div>
                 <div class="sc-row">
-                  <button type="button" class="sc-go" id="ideas-go"><span data-icon="sparkles" data-icon-size="14px"></span> Get ideas</button>
+                  <button type="button" class="pill-button sc-pill" id="ideas-go"><span data-icon="sparkles" data-icon-size="14px"></span> Get ideas</button>
                   <span class="sc-note" id="ideas-status"></span>
                 </div>
                 <p class="sc-note">A language model writes sentences from the words in this video; Slinky-Cut cuts each one and keeps the funniest that cut cleanly. This sends the transcript (text only, never the video) to OpenRouter and the model you choose. Your key stays in this browser. Get one at openrouter.ai/keys.</p>
@@ -174,7 +182,7 @@
       </div>
 
       <div class="sc-timeline" id="timeline"></div>
-      <p class="sc-keys">Space play · double-click empty space: play from there · drag: select several · Shift/Ctrl-click: add · Alt-drag: copy · S split · X crossfade · R backwards · M mute · L lips · Ctrl+C/X/V/D · Del (Shift: close gap) · Alt+←/→ nudge · I / O range start / end (Alt+X clears) · Shift+Z fit · right-click for more</p>
+      <p class="sc-keys">Space play · double-click empty space: play from there · drag: select several · Shift/Ctrl-click: add · Alt-drag: copy · S split (hold B and click: cut there) · X crossfade · R backwards · M mute · L lips · Ctrl+C/X/V/D · Del (Shift: close gap) · Alt+←/→ nudge · I / O range start / end (Alt+X clears) · Shift+Z fit · right-click for more</p>
       <div class="sc-pop" id="pop" hidden></div>
       <div class="sc-ctx" id="ctx" role="menu" hidden></div>
 

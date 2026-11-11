@@ -171,7 +171,14 @@ export class Timeline extends EventTarget {
     this.rangeEl.className = 'tl-range';
     this.rangeEl.innerHTML = '<span class="tl-loc in" data-loc="a" title="Range start – drag to move (I sets it at the playhead)"></span><span class="tl-loc out" data-loc="b" title="Range end – drag to move (O sets it at the playhead)"></span>';
     this.rangeEl.hidden = true;
-    this.lane.append(this.rangeEl, this.head, this.box);
+    // Klinge (Taste B gedrückt halten): Linie zeigt, wo ein Klick schneidet
+    this.bladeEl = document.createElement('div');
+    this.bladeEl.className = 'tl-blade';
+    this.bladeEl.hidden = true;
+    this.lane.append(this.rangeEl, this.head, this.box, this.bladeEl);
+    this.lane.addEventListener('pointermove', e => this.bladeHover(e));
+    this.lane.addEventListener('pointerleave', () => { this.bladeEl.hidden = true; });
+    this.setBlade(this.blade);
     this.scroll.append(this.lane);
     this.root.append(head, this.scroll);
 
@@ -213,7 +220,8 @@ export class Timeline extends EventTarget {
     const add = e.target.closest('[data-add]')?.dataset.add;
     const mute = e.target.closest('[data-mute]')?.dataset.mute;
     const del = e.target.closest('[data-del]')?.dataset.del;
-    if (add) { this.commit(); this.addTrack(add); this.changed(); }
+    // Was auf die neue Spur soll (leer, Original, Musik …), fragt die Seite
+    if (add) { const r = e.target.closest('[data-add]').getBoundingClientRect(); this.dispatchEvent(new CustomEvent('addtrack', { detail: { kind: add, x: r.left, y: r.bottom } })); }
     if (mute) { this.commit(); const t = this.track(mute); t.muted = !t.muted; this.changed(); }
     if (del) { this.commit(); this.removeTrack(del); this.fixSelection(); this.changed(); }
   }
@@ -492,6 +500,22 @@ export class Timeline extends EventTarget {
   }
   select(id) { this.setSelection(id ? [id] : []); }
 
+  /** Klingen-Modus an/aus (App: solange B gedrückt ist). */
+  setBlade(on) {
+    this.blade = !!on;
+    this.lane?.classList.toggle('blade', this.blade);
+    if (!this.blade && this.bladeEl) this.bladeEl.hidden = true;
+  }
+  bladeHover(e) {
+    if (!this.blade) return;
+    const el = e.target.closest?.('.tl-clip');
+    if (!el) { this.bladeEl.hidden = true; return; }
+    const c = this.get(el.dataset.id), t = this.snap(this.timeAt(e), new Set([c.id]));
+    const row = this.tracks.findIndex(tr => tr.id === c.track);
+    Object.assign(this.bladeEl.style, { left: `${t * this.pps}px`, top: `${RULER + row * ROW + 3}px`, height: `${ROW - 6}px` });
+    this.bladeEl.hidden = false;
+  }
+
   // ------------------------------------------------------------ Maus
   timeAt(e) { return (e.clientX - this.lane.getBoundingClientRect().left) / this.pps; }
   rowAt(e) {
@@ -531,6 +555,15 @@ export class Timeline extends EventTarget {
     if (!clipEl) { this.marquee(e, t0); return; }
 
     const c = this.get(clipEl.dataset.id);
+    // Klinge: an dieser Stelle teilen (mit den Lippen des Clips)
+    if (this.blade) {
+      const t = this.snap(t0, new Set([c.id]));
+      const ids = new Set([c.id, ...this.clips.filter(y => y.ref === c.id).map(y => y.id)]);
+      this.commit();
+      if (this.split(t, ids)) this.changed(); else this.history.pop();
+      this.bladeHover(e);
+      return;
+    }
     const ctrl = e.ctrlKey || e.metaKey;
     if (e.shiftKey && !e.altKey) {
       const ids = new Set(this.sel);

@@ -91,3 +91,52 @@ export function f0At(audio, center, sr = 16000, fmin = 65, fmax = 400) {
   }
   return 0;
 }
+
+/**
+ * Stimmreste aus der Musik holen. Die Musik ist Mischung − Stimme; was die Trennung
+ * an Stimme übersehen hat, bleibt darin hörbar. Pro Frequenz und Zeitfenster wird die
+ * Musik dort gedämpft, wo die Stimme deutlich stärker ist (weiche Maske, wie ein
+ * Wiener-Filter mit Übergewicht für die Stimme). 48 kHz mono, Fenster 2048, Hop 512.
+ */
+export function cleanMusic(music, voice, { over = 2.5, floor = 0.12, hiss = [], hissGain = 0.25, onProgress } = {}) {
+  const N = 2048, H = 512, n = music.length;
+  const win = Float32Array.from({ length: N }, (_, i) => 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N));
+  const out = new Float32Array(n), norm = new Float32Array(n);
+  const mr = new Float32Array(N), mi = new Float32Array(N), vr = new Float32Array(N), vi = new Float32Array(N);
+  const frames = Math.ceil(n / H) + 1;
+  // Zischlaute und Verschlüsse der Stimme (aus dem Alignment): Dort verrät sich die Stimme in
+  // den Höhen, die die Trennung kaum erwischt – die Musik oberhalb ~3 kHz kurz absenken.
+  const hissAt = new Uint8Array(frames);
+  for (const [a, b] of hiss) for (let f = Math.max(0, Math.floor(a * 48000 / H)); f <= Math.min(frames - 1, Math.ceil(b * 48000 / H)); f++) hissAt[f] = 1;
+  const hiW = Float32Array.from({ length: N }, (_, k) => {
+    const hz = Math.min(k, N - k) * 48000 / N;
+    return hz < 2500 ? 1 : hz > 4000 ? hissGain : 1 - (1 - hissGain) * (hz - 2500) / 1500;
+  });
+  for (let f = 0; f < frames; f++) {
+    const o = f * H - N / 2;
+    for (let i = 0; i < N; i++) {
+      const j = o + i, w = win[i];
+      mr[i] = j >= 0 && j < n ? music[j] * w : 0; vr[i] = j >= 0 && j < n ? voice[j] * w : 0;
+      mi[i] = 0; vi[i] = 0;
+    }
+    fftReal(mr, mi); fftReal(vr, vi);
+    for (let k = 0; k < N; k++) {
+      const pm = mr[k] * mr[k] + mi[k] * mi[k], pv = vr[k] * vr[k] + vi[k] * vi[k];
+      let g = Math.max(floor, pm / (pm + over * pv + 1e-12));
+      if (hissAt[f]) g *= hiW[k];
+      mr[k] *= g; mi[k] *= g;
+    }
+    // inverse FFT über konjugierte Vorwärts-FFT
+    for (let k = 0; k < N; k++) mi[k] = -mi[k];
+    fftReal(mr, mi);
+    for (let i = 0; i < N; i++) {
+      const j = o + i;
+      if (j < 0 || j >= n) continue;
+      out[j] += (mr[i] / N) * win[i];
+      norm[j] += win[i] * win[i];
+    }
+    if (onProgress && f % 2000 === 0) onProgress(f / frames);
+  }
+  for (let j = 0; j < n; j++) out[j] = norm[j] > 1e-6 ? out[j] / norm[j] : 0;
+  return out;
+}

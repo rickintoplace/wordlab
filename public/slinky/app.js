@@ -8,7 +8,8 @@ import { Timeline, clock, reserveIds } from './timeline.js';
 import { endOf, speedOf, srcSpan, timeOf, toggleCrossfades, migrate, keptSpan } from './project.js';
 import { Player } from './player.js';
 import * as cache from './cache.js';
-import { DEFAULT_MODEL, generateIdeas, buildCost, pickIdeas } from './ideas.js';
+import { pack, unpack, estimateMB } from './projfile.js';
+import { DEFAULT_MODEL, generateIdeas, rewriteIdeas, buildCost, pickIdeas } from './ideas.js';
 
 paintIcons();
 const $ = id => document.getElementById(id);
@@ -206,26 +207,31 @@ function showLangNote(m) {
 
 // ---------------------------------------------------------------- Studio
 async function ready(m) {
+  if (S) { S.player.stop(); S.player.hold.remove(); }      // neu aufgebaut (weitere Quelle)
   els.steps.hidden = true;
   for (const el of document.querySelectorAll('.sc-setup > :not(.sc-filename):not(.sc-row)')) el.hidden = true;
   els.analyze.hidden = true;
   els.estimate.hidden = false;
   els.estimate.textContent = `${m.words.length} words, ${m.lang === 'de' ? 'German' : 'English'}${m.speakers.length > 1 ? `, ${m.speakers.length} voices` : ''}${m.hasMusic ? ', voice and music separated' : ''}.`;
   els.loaded.classList.add('slim');
+  $('proj-save').hidden = false; $('src-add').hidden = false;
   els.video.pause();
   document.body.classList.add('sc-editing');
   els.studio.hidden = false;
 
   const duration = els.video.duration || m.voice.length / SR;
+  const sources = m.sources ?? [{ name: file.name, size: file.size, offset: 0, duration }];
+  const total = Math.max(...sources.map(x => x.offset + x.duration), duration);
   const tl = new Timeline(els.timeline, {
     samples: c => (c.type === 'take' ? c.take.audio : c.type === 'music' ? m.music : c.type === 'orig' || c.type === 'snip' ? m.voice : null),
     words: m.words,
-    sourceLength: c => (c.type === 'take' ? c.take.audio.length / SR : c.type === 'video' || c.type === 'lips' ? duration
+    sourceLength: c => (c.type === 'take' ? c.take.audio.length / SR : c.type === 'video' || c.type === 'lips' ? total
       : (c.type === 'music' ? m.music : m.voice).length / SR),
   });
   tl.minLength = duration;
   const player = new Player({ timeline: tl, voice: m.voice, music: m.music, url: els.video.src, canvas: els.canvas, badge: els.badge });
-  S = { ...m, duration, tl, player, bin: [], binSel: null };
+  S = { ...m, duration, sources, tl, player, bin: [], binSel: null };
+  syncMedia();
   window.slinky = S;               // zum Nachsehen in der Konsole
 
   // Gespeichertes Projekt fortsetzen, sonst: Video, Originalstimme und Musik als je ein Clip
@@ -268,6 +274,7 @@ async function ready(m) {
   tl.addEventListener('range', () => { exportScope = tl.range ? 'range' : 'all'; save(); syncExportScope(); });
   tl.addEventListener('playfrom', () => player.play(tl.playhead));
   tl.addEventListener('menu', e => contextMenu(e.detail));
+  tl.addEventListener('addtrack', e => addTrackMenu(e.detail));
   player.addEventListener('time', e => showTime(e.detail));
   player.addEventListener('state', () => els.play.replaceChildren(icon(player.playing ? 'pause' : 'play', { size: '18px' })));
 
@@ -295,6 +302,10 @@ async function ready(m) {
   }));
   inspect([]);
   els.text.focus();
+  if (addedSource) {
+    srcBox(`<p>“${esc(addedSource)}” is part of this project now: new sentences can use its words and sounds. Its voice and picture are under <b>+ Audio</b> and <b>+ Video</b> at the left of the timeline.</p>`, true);
+    addedSource = null;
+  }
 }
 
 /**
@@ -302,8 +313,8 @@ async function ready(m) {
  * Sprecherwechseln. Mit getrennter Stimme bleiben die Pausen leer (dort ist ohnehin
  * kaum etwas), sonst wird in ihrer Mitte geschnitten, damit nichts vom Hintergrund fehlt.
  */
-function phraseClips(m, len, track) {
-  const ws = m.words.filter(w => w.e > w.s);
+function phraseClips(m, len, track, from = 0) {
+  const ws = m.words.filter(w => w.e > w.s && w.s >= from - 0.05 && w.e <= from + len + 0.05);
   if (!ws.length) return [{ track, type: 'orig', at: 0, len, src: 0, label: m.hasMusic ? 'Original voice' : 'Original sound' }];
   const groups = [];
   for (const w of ws) {
@@ -315,10 +326,11 @@ function phraseClips(m, len, track) {
   groups.forEach((g, i) => {
     const prev = groups[i - 1], next = groups[i + 1];
     let a, b;
-    if (m.hasMusic) { a = Math.max(0, g.s - PAD, prev ? (prev.e + g.s) / 2 : 0); b = Math.min(len, g.e + PAD, next ? (g.e + next.s) / 2 : len); }
-    else { a = prev ? (prev.e + g.s) / 2 : 0; b = next ? (g.e + next.s) / 2 : len; }
+    const end = from + len;
+    if (m.hasMusic) { a = Math.max(from, g.s - PAD, prev ? (prev.e + g.s) / 2 : from); b = Math.min(end, g.e + PAD, next ? (g.e + next.s) / 2 : end); }
+    else { a = prev ? (prev.e + g.s) / 2 : from; b = next ? (g.e + next.s) / 2 : end; }
     const text = g.words.join(' ');
-    out.push({ track, type: 'orig', at: a, len: b - a, src: a, label: (m.speakers.length > 1 ? `V${m.speakers.findIndex(x => x.id === g.spk) + 1}: ` : '') + text });
+    out.push({ track, type: 'orig', at: a - from, len: b - a, src: a, label: (m.speakers.length > 1 ? `V${m.speakers.findIndex(x => x.id === g.spk) + 1}: ` : '') + text });
   });
   return out;
 }
@@ -333,8 +345,9 @@ els.zoom.addEventListener('input', () => { const [a, b] = zoomRange(); S.tl.zoom
 let saveTimer = 0;
 function save() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => cache.put(`project|${key}`, { tracks: S.tl.tracks, clips: S.tl.clips, bin: S.bin, range: S.tl.range }).catch(() => {}), 800);
+  saveTimer = setTimeout(() => cache.put(`project|${key}`, projectState()).catch(() => {}), 800);
 }
+const projectState = () => ({ tracks: S.tl.tracks, clips: S.tl.clips, bin: S.bin, range: S.tl.range });
 
 /** Zielspur für neuen Ton: die Tonspur des gewählten Clips, sonst „Voice“. */
 function voiceTrack() {
@@ -628,6 +641,7 @@ function inspect(sel) {
     const on = voiced.every(hasLips);
     btn(on ? 'Hide lips' : 'Show lips', () => lips(voiced, !on), 'film', 'L · Put the video of them saying each piece on the Lips track');
   }
+  if (voiced.length && voiced.some(x => clipText(x))) btn('AI rewrite', () => aiRewrite(voiced), 'sparkles', 'Let a language model turn this into YTP versions (needs your OpenRouter key under Ideas)');
   if (!many && c.type === 'snip') {
     const row = document.createElement('div');
     row.className = 'sc-nudge';
@@ -648,6 +662,101 @@ function inspect(sel) {
   btn(sel.every(x => x.muted) ? 'Unmute' : 'Mute', () => tools.mute(), sel.every(x => x.muted) ? 'volume-2' : 'volume-x', 'M');
   btn('Delete', () => tools.del(), 'trash', 'Del (Shift+Del closes the gap)');
   box.append(acts);
+  if (ai && ai.ids === sel.map(x => x.id).sort().join()) box.append(ai.el);
+}
+
+// ---------------------------------------------------------------- KI: Stelle umschreiben
+let ai = null;          // { ids, el } – Ergebnisse für die gerade gewählten Clips
+
+/** Was in einem Ton-Clip gesagt wird (nur der sichtbare Teil). */
+function clipText(c) {
+  if (c.type === 'take') {
+    const a = c.src, b = c.src + c.len * speedOf(c);
+    return c.take.words.filter(w => w.end > a + 0.02 && w.start < b - 0.02).map(w => w.w).join(' ');
+  }
+  return clipWords(c).map(i => S.words[i].w).join(' ');
+}
+const clipWords = c => S.words.map((w, i) => i).filter(i => S.words[i].e > S.words[i].s && S.words[i].s >= c.src - 0.02 && S.words[i].e <= c.src + c.len * speedOf(c) + 0.02);
+function clipSpeaker(c) {
+  if (S.speakers.length < 2) return null;
+  if (c.type === 'take') return c.take.speaker ?? null;
+  const n = new Map();
+  for (const i of clipWords(c)) n.set(S.words[i].spk, (n.get(S.words[i].spk) ?? 0) + 1);
+  return [...n].sort((x, y) => y[1] - x[1])[0]?.[0] ?? null;
+}
+
+/** Die gewählten Clips von einem Sprachmodell umschreiben lassen; Ergebnisse zum Anhören und Einsetzen. */
+async function aiRewrite(cs) {
+  cs = [...cs].sort((a, b) => a.at - b.at);
+  const line = cs.map(clipText).filter(Boolean).join(' ');
+  const key = ideas.key.value.trim(), model = ideas.model.value.trim() || DEFAULT_MODEL;
+  if (!key) {
+    if (ideas.box.hidden) ideas.btn.click();
+    ideas.status.textContent = 'Enter your OpenRouter key here first, then try AI rewrite again.';
+    ideas.key.focus();
+    return;
+  }
+  const spk = clipSpeaker(cs[0]);
+  const ids = cs.map(x => x.id).sort().join();
+  const el = document.createElement('div');
+  el.className = 'sc-ai';
+  el.innerHTML = `<p class="sc-ai-from">“${esc(line)}”</p>`;
+  const busy = document.createElement('p');
+  busy.className = 'sc-busy';
+  busy.innerHTML = '<span class="sc-busy-ring"></span><span class="sc-busy-text">Asking the model…</span>';
+  el.append(busy);
+  ai = { ids, el };
+  inspect(S.tl.selection());
+  const say = t => { busy.querySelector('.sc-busy-text').textContent = t; };
+  try {
+    const ws = S.words.filter(w => spk == null || w.spk === spk);
+    const { lines } = await rewriteIdeas({ key, model, words: ws, lang: S.lang, line });
+    if (!lines.length) throw new Error('The model sent no usable versions. Try again.');
+    const scored = [];
+    for (const [i, text] of lines.entries()) {
+      say(`Cutting version ${i + 1} of ${lines.length}…`);
+      try { const r = await request({ type: 'mix', text, speaker: spk }); scored.push({ text, r, cost: buildCost(r.words) }); } catch { /* nächste */ }
+    }
+    const best = pickIdeas(scored, 5);
+    const list = document.createElement('ol');
+    list.className = 'sc-ai-list';
+    for (const { text, r } of best) {
+      const li = document.createElement('li');
+      const play = document.createElement('button');
+      play.type = 'button'; play.className = 'sc-mini'; play.setAttribute('aria-label', 'Listen'); play.title = 'Listen';
+      play.append(icon('play', { size: '13px' }));
+      play.addEventListener('click', () => S.player.listen(r.audio));
+      const t = document.createElement('span');
+      t.textContent = text;
+      const use = document.createElement('button');
+      use.type = 'button'; use.className = 'sc-act sc-ai-use'; use.textContent = 'Use';
+      use.title = 'Replace the selected clips with this version';
+      use.addEventListener('click', () => useRewrite(cs, { text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force }));
+      li.append(play, t, use);
+      list.append(li);
+    }
+    busy.replaceWith(list);
+  } catch (err) {
+    busy.className = 'sc-note';
+    busy.textContent = err.message;
+  }
+}
+
+/** Gewählte Clips durch eine Fassung ersetzen (an der Stelle des ersten, auf seiner Spur). */
+function useRewrite(cs, b) {
+  const { tl } = S;
+  cs = cs.map(c => tl.get(c.id)).filter(Boolean);
+  if (!cs.length) return;
+  tl.commit();
+  const hadLips = cs.some(hasLips);
+  const at = Math.min(...cs.map(c => c.at)), track = cs[0].track, gain = cs[0].gain ?? 1;
+  tl.remove(withLips(cs).map(c => c.id));
+  const n = tl.add({ ...takeClip(b, at, track), gain });
+  tl.changed();
+  ai = null;
+  tl.select(n.id);
+  if (hadLips) { tl.history.pop(); lips([n], true); }
+  S.player.play(n.at, { until: endOf(n) });
 }
 
 /** Tempo ändern: Die Dauer auf der Zeitleiste ändert sich, die Quelle bleibt dieselbe. */
@@ -846,6 +955,11 @@ function altText(o, si, sylNames) {
     const feel = f ? (how.length ? `${how.join(', ')} than the words around it` : 'matches the words around it') : 'the whole word from the video';
     return { name: `${use}“${i.word}”`, detail: `${feel}${time}`, context: i.context, best: o.best };
   }
+  if (i.kind === 'stem') {
+    const added = [i.before, i.after].filter(Boolean).map(x => `“${x}”`).join(' and ');
+    return { name: `${use}${[i.before, `“${i.word}”`, i.after].filter(Boolean).join(' + ')}`,
+      detail: `the whole word “${i.word}” from the video, ${added} added${time}`, context: i.context, best: o.best };
+  }
   if (i.kind === 'syllable') return { name: `${use}${where} “${i.word}”`, detail: `sounds like “${sylNames[si] ?? ''}”${i.similar ? ' (close, not exact)' : ''}${time}` };
   const from = [...new Set(i.from)];
   if (from.length === 1) return { name: `${use}pieces of “${from[0]}”`, detail: 'put together from several spots' };
@@ -1015,9 +1129,13 @@ const tools = {
 for (const [id, fn] of [['t-play', 'play'], ['t-split', 'split'], ['t-mute', 'mute'], ['t-dup', 'dup'], ['t-del', 'del'], ['t-undo', 'undo'], ['t-redo', 'redo'], ['t-xfade', 'xfade'], ['t-rev', 'reverse']])
   $(id)?.addEventListener('click', () => S && tools[fn]());
 
+// Klinge: B gedrückt halten und auf einen Clip klicken – dort wird geteilt
+document.addEventListener('keyup', e => { if (e.key.toLowerCase() === 'b') S?.tl.setBlade(false); });
+addEventListener('blur', () => S?.tl.setBlade(false));
 document.addEventListener('keydown', e => {
   if (!S || els.studio.hidden) return;
   if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+  if (e.key.toLowerCase() === 'b' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); S.tl.setBlade(true); return; }
   const mod = e.ctrlKey || e.metaKey, k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   const map = mod ? { z: e.shiftKey ? 'redo' : 'undo', y: 'redo', d: 'dup', c: 'copy', x: 'cut', v: 'paste', a: 'selectAll' }
     : { ' ': 'play', s: 'split', m: 'mute', x: 'xfade', r: 'reverse', l: 'lips', i: 'markIn', o: 'markOut', Delete: 'del', Backspace: 'del' };
@@ -1063,16 +1181,22 @@ function contextMenu({ x, y, t, onClip, onRuler }) {
     items.push(['Cut', 'Ctrl+X', 'cut'], ['Copy', 'Ctrl+C', 'copy'], ['Duplicate', 'Ctrl+D', 'dup'], null,
       ['Split at playhead', 'S', 'split'], ['Crossfade with neighbours', 'X', 'xfade'], ['Backwards', 'R', 'reverse'], ['Mute', 'M', 'mute'], null);
     const voiced = S.tl.selection().filter(isVoiced);
-    if (voiced.length) items.push([voiced.every(hasLips) ? 'Hide lips' : 'Show lips', 'L', 'lips'], null);
+    if (voiced.length) items.push([voiced.every(hasLips) ? 'Hide lips' : 'Show lips', 'L', 'lips'], ...(voiced.some(clipText) ? [['AI rewrite…', '', () => aiRewrite(voiced)]] : []), null);
     items.push(['Range around selection', '', 'rangeFromSelection'], null);
     items.push(['Delete', 'Del', 'del'], ['Delete and close gap', 'Shift+Del', () => tools.del(true)]);
   } else {
     items.push(['Paste here', 'Ctrl+V', () => { S.tl.setPlayhead(t); tools.paste(); }], ['Play from here', 'double-click', () => S.player.play(t)], null,
       ['Select all', 'Ctrl+A', 'selectAll'], ['Zoom to fit', 'Shift+Z', 'fit']);
   }
+  showMenu(items, x, y);
+}
+
+/** Kontextmenü mit Einträgen [Text, Taste, Aktion] (null = Trennlinie; Aktion null = nur Hinweis). */
+function showMenu(items, x, y) {
   menu.replaceChildren(...items.map(it => {
     if (!it) { const hr = document.createElement('hr'); return hr; }
     const [label, key, act] = it;
+    if (act === null) { const p = document.createElement('p'); p.className = 'sc-ctx-note'; p.textContent = label; return p; }
     const b = document.createElement('button');
     b.type = 'button';
     b.innerHTML = `<span>${label}</span><kbd>${key}</kbd>`;
@@ -1082,6 +1206,53 @@ function contextMenu({ x, y, t, onClip, onRuler }) {
   }));
   menu.hidden = false;
   place(menu, x + 20, y - 12);
+}
+
+// ---------------------------------------------------------------- Spuren wiederherstellen
+/** „+ Video“ / „+ Audio“: leere Spur oder das Original (aus der gespeicherten Analyse) neu anlegen. */
+function addTrackMenu({ kind, x, y }) {
+  const voiceLen = Math.min(S.duration, S.voice.length / SR);
+  const items = [['Empty track', '', () => newTrack(kind)]];
+  if (kind === 'video') items.push(['Original video', '', () => newTrack('video', [{ type: 'video', at: 0, len: S.duration, src: 0, label: file.name }])]);
+  else {
+    items.push(['Original voice, sentence by sentence', '', () => newTrack('audio', phraseClips(S, voiceLen, ''))],
+      [`Original ${S.hasMusic ? 'voice' : 'sound'} in one piece`, '', () => newTrack('audio', [{ type: 'orig', at: 0, len: voiceLen, src: 0, label: S.hasMusic ? 'Original voice' : 'Original sound' }])]);
+    if (S.music) items.push(['Music', '', () => newTrack('audio', [{ type: 'music', at: 0, len: Math.min(S.duration, S.music.length / SR), src: 0, label: 'Music' }])]);
+  }
+  for (const src of S.sources.slice(1)) {
+    const dur = Math.min(src.duration, S.voice.length / SR - src.offset);
+    if (kind === 'video') items.push([`Video of “${src.name}”`, '', () => newTrack('video', [{ type: 'video', at: 0, len: src.duration, src: src.offset, label: src.name }])]);
+    else items.push([`Voice of “${src.name}”, sentence by sentence`, '', () => newTrack('audio', phraseClips(S, dur, '', src.offset))]);
+  }
+  items.push(null, ['Analyse the video again…', '', () => askReanalyse(x, y)]);
+  showMenu(items, x - 20, y + 12);
+}
+function newTrack(kind, clips = []) {
+  const { tl } = S;
+  tl.commit();
+  // Ist die übliche Spur dafür leer (Clips gelöscht), kommt es dorthin, sonst auf eine neue
+  const home = { video: 'v1', orig: 'a1', music: 'a2' }[clips[0]?.type];
+  let t = home && tl.track(home) && !tl.clips.some(c => c.track === home) ? tl.track(home) : null;
+  if (!t) { t = tl.addTrack(kind); if (clips[0]?.type === 'music') t.name = 'Music'; }
+  for (const c of clips) tl.add({ ...c, track: t.id }, { overwrite: false });
+  tl.build(true);
+  tl.changed();
+}
+/** Alles neu berechnen (Trennung, Transkript, Laute). Das Projekt bleibt, wie es ist. */
+function askReanalyse(x, y) {
+  const min = Math.round(((els.video.duration || 0) / 60) * (els.separate.checked ? 4.1 : 2.6) + 1);
+  showMenu([[`Runs the whole analysis again: separation, transcript, sounds (about ${min} min). Your clips and sentences stay. Only useful after an update or if something sounds wrong.`, '', null],
+    ['Analyse again', '', reanalyse], ['Cancel', 'Esc', () => {}]], x - 20, y + 12);
+}
+async function reanalyse() {
+  clearTimeout(saveTimer);
+  await cache.put(`project|${key}`, projectState()).catch(() => {});
+  await cache.remove(key).catch(() => {});
+  const lg = key.split('|')[3];
+  load(file);
+  const r = document.querySelector(`input[name="lang"][value="${lg}"]`);
+  if (r) r.checked = true;
+  els.analyze.click();
 }
 
 // ---------------------------------------------------------------- Ausgeben
@@ -1105,6 +1276,7 @@ function syncExportScope() {
   for (const b of els.exportMenu.querySelectorAll('[data-scope]')) b.setAttribute('aria-checked', String(b.dataset.scope === exportScope));
 }
 els.exportMenu.addEventListener('click', async e => {
+  if (e.target.closest('.sc-wmark')) { e.stopPropagation(); return; }
   const scope = e.target.closest('[data-scope]')?.dataset.scope;
   if (scope) { e.stopPropagation(); exportScope = scope; syncExportScope(); return; }
   const kind = e.target.closest('[data-export]')?.dataset.export;
@@ -1118,12 +1290,211 @@ els.exportMenu.addEventListener('click', async e => {
   exporting = new AbortController();
   btn.title = 'Click to cancel';
   try {
-    const { blob, ext } = await S.player.render(f => { btn.textContent = `Exporting ${Math.round(f * 100)} % · cancel`; }, exporting.signal, span);
+    const { blob, ext } = await S.player.render(f => { btn.textContent = `Exporting ${Math.round(f * 100)} % · cancel`; }, exporting.signal,
+      { ...span, watermark: $('export-mark').checked });
     download(blob, `${name}.${ext}`);
   } catch (err) { if (err.name !== 'AbortError') fail(err.message); } finally {
-    exporting = null; btn.innerHTML = label; btn.title = ''; S.player.sync(S.tl.playhead);
+    exporting = null; btn.innerHTML = label; btn.title = ''; S.player.mark = null; S.player.sync(S.tl.playhead);
   }
 });
+
+// ---------------------------------------------------------------- Weitere Quellen
+// Andere Aufnahmen desselben Sprechers (z. B. weitere Folgen einer Reihe): Sie werden genauso
+// analysiert und hinter das Video gehängt; der Schnitt schöpft dann aus allem.
+const mediaFiles = new Map();          // „Name|Größe“ → Objekt-URL (nur in dieser Sitzung)
+const MAX_TOTAL_MIN = 45;
+/** Bildquellen an den Player geben; fehlende Dateien (nach dem Neuladen) zum Nachladen anbieten. */
+function syncMedia() {
+  const list = S.sources.map((x, i) => ({ url: i === 0 ? els.video.src : mediaFiles.get(`${x.name}|${x.size}`) ?? null, offset: x.offset }));
+  S.player.setMedia(list);
+  const missing = S.sources.filter((x, i) => i > 0 && !list[i].url);
+  const box = $('src-box');
+  if (!missing.length) { if (box.dataset.kind === 'missing') box.hidden = true; return; }
+  box.dataset.kind = 'missing';
+  box.hidden = false;
+  box.innerHTML = `<p>This project also uses ${missing.map(x => `“${esc(x.name)}”`).join(', ')}. Its sound is here; load the file to see its picture too.</p>`;
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'sc-act'; b.textContent = missing.length > 1 ? 'Load the files' : 'Load the file';
+  b.addEventListener('click', () => $('src-media').click());
+  box.append(b);
+}
+$('src-media').addEventListener('change', e => {
+  for (const f of e.target.files) {
+    const hit = S?.sources.find(x => x.name === f.name && x.size === f.size) ?? S?.sources.find(x => x.name === f.name);
+    if (hit) mediaFiles.set(`${hit.name}|${hit.size}`, URL.createObjectURL(f));
+  }
+  e.target.value = '';
+  if (S) syncMedia();
+});
+
+$('src-add').addEventListener('click', () => $('src-file').click());
+$('src-file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (f && S) addSourceFile(f).catch(err => { srcBox(`<p class="sc-error-inline">${esc(err.message)}</p>`, true); els.steps.hidden = true; });
+});
+function srcBox(html, closable = false) {
+  const box = $('src-box');
+  box.dataset.kind = 'add';
+  box.hidden = false;
+  box.innerHTML = html;
+  if (closable) {
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'sc-act'; x.textContent = 'Close';
+    x.addEventListener('click', () => { box.hidden = true; });
+    box.append(x);
+  }
+}
+
+async function addSourceFile(f, { run = runStage, dec = decode } = {}) {
+  if (S.sources.some(x => x.name === f.name && x.size === f.size)) throw new Error(`“${f.name}” is already part of this project.`);
+  if (S.sources.length >= 4) throw new Error('At most three extra sources per project (memory).');
+  const separate = key.endsWith('|sep');
+  srcBox(`<p><strong>Adding “${esc(f.name)}”</strong> · the steps are shown at the top of the page. You can keep cutting meanwhile.</p>`);
+  for (const li of els.steps.querySelectorAll('li')) { delete li.dataset.state; delete li.dataset.keep; li.querySelector('.bar i').style.width = '0'; li.querySelector('.detail').textContent = ''; }
+  els.steps.hidden = false;
+  setStage('decode', 'running');
+  const { a16, a48, a44 } = await dec(f, separate);
+  setStage('decode', 'done');
+  const have = S.voice.length / SR, add = a16.length / 16000;
+  if ((have + add) / 60 > MAX_TOTAL_MIN) throw new Error(`Together that would be ${Math.round((have + add) / 60)} minutes of sound – more than ${MAX_TOTAL_MIN} minutes do not fit in browser memory.`);
+  let voice16 = a16, voice48 = a48, music48 = null;
+  if (separate) ({ voice16, voice48, music48 } = await run('separate', { task: 'separate', a44, a48 }, [...a44.map(x => x.buffer)]));
+  else setStage('separate', 'skipped');
+  const tr = await run('transcribe', { task: 'transcribe', a16: voice16.slice(), lang: S.lang });
+  const words = tr.words;
+  // Stimmen vergleichen: je bekannter Stimme bis zu 10 s ihrer längsten Sätze (16 kHz)
+  const refs = S.speakers.map(sp => ({ id: sp.id, clips: voiceSamples(sp.id) })).filter(r => r.clips.length);
+  const { spk, match } = await run('speakers', { task: 'speakers', a16: voice16.slice(), words, refs });
+  words.forEach((w, i) => { w.spk = spk[i] ?? 0; });
+  const ph = await run('phonemes', { task: 'phonemes', a16: voice16.slice() });
+  els.steps.hidden = true;
+
+  // Welche neue Stimme ist welche bekannte? Vorschlag aus dem Vergleich, man kann es ändern.
+  const secs = k => words.filter(w => w.spk === k).reduce((a, w) => a + w.e - w.s, 0);
+  const known = S.speakers.map((sp, i) => `<option value="${sp.id}">Voice ${i + 1}${i === 0 ? ' (most)' : ''}</option>`).join('');
+  const rows = match.filter(x => secs(x.spk) > 1).map(x => `<label class="sc-srcmap">Voice in the new file · ${clock(secs(x.spk), false)}
+      <select data-spk="${x.spk}"><option value="new">a new voice</option>${known}</select>
+      <small>${x.ref != null ? `sounds like Voice ${S.speakers.findIndex(sp => sp.id === x.ref) + 1}` : 'sounds like nobody here'}</small></label>`).join('');
+  srcBox(`<p><strong>“${esc(f.name)}”</strong>: ${words.length} words. Who is speaking there?</p>${rows}`);
+  const box = $('src-box');
+  for (const x of match) { const sel = box.querySelector(`select[data-spk="${x.spk}"]`); if (sel && x.ref != null) sel.value = String(x.ref); }
+  const go = document.createElement('button');
+  go.type = 'button'; go.className = 'sc-act sc-act-main'; go.textContent = 'Add to this project';
+  const no = document.createElement('button');
+  no.type = 'button'; no.className = 'sc-act'; no.textContent = 'Cancel';
+  no.addEventListener('click', () => { box.hidden = true; });
+  box.append(go, no);
+  await new Promise(r => go.addEventListener('click', r, { once: true }));
+
+  let next = Math.max(...S.speakers.map(x => x.id), 0) + 1;
+  const map = new Map();
+  for (const x of match) {
+    const v = box.querySelector(`select[data-spk="${x.spk}"]`)?.value ?? (x.ref != null ? String(x.ref) : 'new');
+    map.set(x.spk, v === 'new' ? next++ : Number(v));
+  }
+  for (const w of words) w.spk = map.get(w.spk) ?? next;
+  srcBox(`<p><strong>Adding “${esc(f.name)}”</strong> · placing every sound in time…</p><p class="sc-busy"><span class="sc-busy-ring"></span><span class="sc-busy-text">This takes a minute or two.</span></p>`);
+  mediaFiles.set(`${f.name}|${f.size}`, URL.createObjectURL(f));
+  clearTimeout(saveTimer);
+  await cache.put(`project|${key}`, projectState()).catch(() => {});
+  worker.postMessage({ type: 'addSource', key, name: f.name, size: f.size, mainName: file.name, mainSize: file.size,
+    words, post: ph.post, V: ph.V, vocab: ph.vocab, voice16, voice48, music48 },
+    [ph.post.buffer, voice16.buffer, voice48.buffer, ...(music48 ? [music48.buffer] : [])]);
+  // fertig, wenn der Worker „ready“ meldet: dann baut ready() das Schneidefenster neu auf
+  addedSource = f.name;
+}
+let addedSource = null;
+
+/** Bis zu 10 s der längsten Sätze einer Stimme als 16-kHz-Stücke (für den Stimmvergleich). */
+function voiceSamples(id) {
+  const groups = [];
+  for (const w of S.words) {
+    if (w.spk !== id || !(w.e > w.s)) continue;
+    const g = groups.at(-1);
+    if (g && w.s - g.e < 0.3) g.e = w.e; else groups.push({ s: w.s, e: w.e });
+  }
+  groups.sort((a, b) => (b.e - b.s) - (a.e - a.s));
+  const out = [];
+  let tot = 0;
+  for (const g of groups) {
+    if (tot >= 10 || g.e - g.s < 1) break;
+    const a = Math.round(g.s * SR), b = Math.min(S.voice.length, Math.round(Math.min(g.e, g.s + 6) * SR));
+    const x = new Float32Array(Math.floor((b - a) / 3));
+    for (let i = 0; i < x.length; i++) { const j = a + 3 * i; x[i] = (S.voice[j] + S.voice[j + 1] + S.voice[j + 2]) / 3; }
+    out.push(x);
+    tot += x.length / 16000;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- Projektdatei
+// Klein: Spuren, Clips, Sätze (mit ihrem Ton). Groß: dazu die ganze Analyse – dann muss
+// auf dem anderen Rechner nichts neu berechnet werden, nur dasselbe Video geladen sein.
+$('proj-save').addEventListener('click', async e => {
+  if (!S) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  // Stimme und Musik (48 kHz), Stimme für die Merkmale (16 kHz), Laut-Wahrscheinlichkeiten (50 je s, ~400 Laute)
+  const sec = S.voice.length / SR;
+  const big = Math.round(estimateMB([S.voice, S.music]) + sec * (16000 * 2 + 50 * 400 * 2) / 1e6);
+  showMenu([
+    ['Project only (small)', '', () => saveProject(false)],
+    [`Project and analysis (about ${big} MB)`, '', () => saveProject(true)],
+    ['With the analysis, the other computer skips the long analysis. Either way, load the same video there first, then Open project.', '', null],
+  ], r.left - 20, r.bottom - 6);
+});
+async function saveProject(withAnalysis) {
+  clearTimeout(saveTimer);
+  const p = projectState();
+  await cache.put(`project|${key}`, p).catch(() => {});
+  const [, , , langSetting, sep] = key.split('|');
+  const analysis = withAnalysis ? await cache.get(key) : null;
+  if (withAnalysis && !analysis) { fail('The analysis is not stored in this browser any more. Save the project without it.'); return; }
+  const header = { format: 'slinky-cut-project', version: 1, saved: new Date().toISOString(),
+    video: { name: file.name, size: file.size, duration: S.duration }, lang: S.lang, langSetting, separate: sep === 'sep', sources: S.sources, project: p, analysis };
+  const blob = pack(header, new Set(analysis ? [analysis.raw.post] : []));
+  download(blob, `${file.name.replace(/\.[^.]+$/, '')}.slinky`);
+}
+
+$('proj-open').addEventListener('click', () => $('proj-file').click());
+$('proj-file').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f || !file) return;
+  try { await openProject(f); } catch (err) { fail(err.message); }
+});
+async function openProject(f) {
+  const h = await unpack(f);
+  if (h.format !== 'slinky-cut-project') throw new Error('This is not a Slinky-Cut project file.');
+  const same = h.video.name === file.name && h.video.size === file.size;
+  const close = Math.abs((h.video.duration ?? 0) - (els.video.duration || h.video.duration)) < 1;
+  const extra = (h.sources ?? []).slice(1).map(x => `“${x.name}”`);
+  const warn = (same ? '' : `This project was made for “${h.video.name}”${close ? '' : ', a video of another length'}. The clips may not fit this video. `)
+    + (extra.length && !(h.analysis && close) ? `It also used ${extra.join(', ')}: add ${extra.length > 1 ? 'them' : 'it'} again with Add source, in the same order.` : '');
+  if (S) {
+    // Im Schneidefenster: Projekt übernehmen (rückgängig machbar), die Analyse hier bleibt
+    const { tl } = S;
+    tl.commit();
+    const p = migrate(h.project);
+    tl.tracks = p.tracks; tl.clips = p.clips; reserveIds(p.clips);
+    S.bin = h.project.bin ?? []; renderBin();
+    tl.build();
+    if (h.project.range) tl.setRange(h.project.range.a, h.project.range.b); else tl.setRange(null, null);
+    tl.changed();
+    requestAnimationFrame(() => { tl.fit(); syncZoomSlider(); });
+    els.estimate.textContent = warn || `Opened ${f.name}.`;
+    return;
+  }
+  // Vor der Analyse: Einstellungen wie im Projekt; mitgebrachte Analyse ersetzt die Berechnung
+  const r = document.querySelector(`input[name="lang"][value="${h.langSetting ?? 'auto'}"]`);
+  if (r) r.checked = true;
+  els.separate.checked = !!h.separate;
+  const k = `${file.name}|${file.size}|${file.lastModified}|${h.langSetting ?? 'auto'}|${h.separate ? 'sep' : 'mix'}`;
+  if (h.analysis && close) await cache.put(k, h.analysis);
+  await cache.put(`project|${k}`, h.project);
+  els.estimate.textContent = warn || (h.analysis && close ? 'Project with analysis: opening…' : 'Project opened. The video is analysed first, then your clips appear.');
+  els.analyze.click();
+}
 
 function download(blob, name) {
   const a = document.createElement('a');
@@ -1149,6 +1520,9 @@ const store = {
   get: k => { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* ohne Speicher eben nicht */ } },
 };
+// Wasserzeichen beim Ausgeben: an, bis man es abwählt (gemerkt)
+$('export-mark').checked = store.get('slinky-watermark') !== '0';
+$('export-mark').addEventListener('change', e => store.set('slinky-watermark', e.target.checked ? '1' : '0'));
 const ideas = { btn: $('ideas-btn'), box: $('ideas'), topic: $('ideas-topic'), key: $('ideas-key'), model: $('ideas-model'), go: $('ideas-go'), status: $('ideas-status'), list: $('ideas-models') };
 ideas.key.value = store.get('slinky-openrouter-key');
 // alte Voreinstellung durch die neue ersetzen, eine eigene Wahl bleibt
@@ -1169,14 +1543,15 @@ async function loadModels() {
       .map(m => Object.assign(document.createElement('option'), { value: m.id })));
   } catch { /* egal */ }
 }
-ideas.go.addEventListener('click', () => S && getIdeas({ topic: ideas.topic.value.trim() }).catch(err => { ideas.status.textContent = err.message; ideas.go.disabled = false; }));
+const idle = () => { ideas.go.disabled = false; ideas.go.classList.remove('busy'); ideas.status.classList.remove('sc-busy-text'); };
+ideas.go.addEventListener('click', () => S && getIdeas({ topic: ideas.topic.value.trim() }).catch(err => { ideas.status.textContent = err.message; idle(); }));
 
 /** Satzvorschläge holen, schneiden, bewerten; die besten `keep` kommen in die Liste. */
 async function getIdeas({ topic = '', count = 16, keep = 5 } = {}) {
   const key = ideas.key.value.trim(), model = ideas.model.value.trim() || DEFAULT_MODEL;
   if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; ideas.key.focus(); return []; }
   store.set('slinky-openrouter-key', key); store.set('slinky-openrouter-model', model);
-  ideas.go.disabled = true;
+  ideas.go.disabled = true; ideas.go.classList.add('busy'); ideas.status.classList.add('sc-busy-text');
   const spk = speaker();
   const ws = S.words.filter(w => spk == null || w.spk === spk);
   // Höchstens zwei gebaute Wörter pro Zeile; ob sie verständlich sind, zeigt der Schnitt
@@ -1197,12 +1572,14 @@ async function getIdeas({ topic = '', count = 16, keep = 5 } = {}) {
   renderBin();
   save();
   ideas.status.textContent = `Added ${best.length} of ${lines.length} ideas – the funniest that cut cleanly.`;
-  ideas.go.disabled = false;
+  idle();
   return best.map(x => x.text);
 }
 
 // ---------------------------------------------------------------- Schnittstelle für Agenten
 // Für Automatisierung (z. B. ein KI-Agent mit Browser-Zugriff). Beschreibung in README.md.
+// nur für den Oberflächentest (ohne Modelle): Quelle mit vorgegebenen Stufen-Ergebnissen anhängen
+if (location.hostname === 'localhost') window.__slinkyTest = { addSourceFile };
 window.slinkyCut = {
   /** Was gesagt wird: [{w, s, e, spk}] (Sekunden in der Quelle). */
   transcript: () => S?.words.map(({ w, s, e, spk }) => ({ w, s, e, spk })) ?? [],

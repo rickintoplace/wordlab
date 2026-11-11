@@ -14,7 +14,7 @@ body[data-page="slinky"] main { max-width: 52rem; align-items: stretch; }
 /* ------------------------------------------------------------------ Kopf */
 .sc-head { text-align: center; display: grid; justify-items: center; gap: .4rem; }
 .sc-mark { color: var(--c-onset-1); line-height: 0; margin-bottom: -.6rem; }
-.sc-mark .icon { stroke-width: 1.1; }
+.sc-mark .icon { stroke-width: 1.1; translate: 0 -11%; }   /* der Bogen sitzt im unteren Teil seines Felds */
 .sc-head h1 { font-size: clamp(2rem, 6vw, 3rem); letter-spacing: -.03em; margin: 0; }
 .sc-head .tagline { max-width: 32rem; margin: 0; color: var(--muted); line-height: 1.5; }
 
@@ -107,11 +107,14 @@ body[data-page="slinky"] main { max-width: 52rem; align-items: stretch; }
 /* ------------------------------------------------------------------ Schneiden */
 /* Im Schnittfenster wird die Seite breit, der Kopf klein */
 body.sc-editing main { max-width: min(100%, 100rem); }
-body.sc-editing .sc-head { grid-template-columns: auto auto; justify-content: center; align-items: center; gap: .6rem; }
+/* Beim Schneiden: Titel klein links, Datei daneben in derselben Zeile */
+body.sc-editing main { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 1.25rem; padding-top: 1.25rem; }
+body.sc-editing main > :not(.sc-head, .sc-source) { grid-column: 1 / -1; }
+body.sc-editing .sc-head { grid-template-columns: auto auto; justify-content: start; align-items: center; gap: .45rem; padding-right: 1.25rem; border-right: 1px solid var(--line); }
 body.sc-editing .sc-head .tagline { display: none; }
-body.sc-editing .sc-head h1 { font-size: 1.6rem; }
+body.sc-editing .sc-head h1 { font-size: 1.35rem; }
 body.sc-editing .sc-mark { margin: 0; }
-body.sc-editing .sc-mark .icon { width: 40px; height: 40px; }
+body.sc-editing .sc-mark .icon { width: 34px; height: 34px; }
 .sc-loaded.slim { grid-template-columns: 1fr; }
 .sc-loaded.slim video { display: none; }
 .sc-loaded.slim .sc-setup { grid-auto-flow: column; justify-content: start; align-items: baseline; gap: 1.2rem; }
@@ -161,6 +164,8 @@ body.sc-editing .sc-mark .icon { width: 40px; height: 40px; }
 .sc-menu .sc-scope button[aria-checked="true"] { background: var(--surface); color: var(--fg); font-weight: 650; box-shadow: 0 1px 2px color-mix(in srgb, var(--fg) 15%, transparent); }
 .sc-menu .sc-scope button:disabled { opacity: .45; cursor: default; }
 .sc-scope-hint { display: block; padding: 0 .7rem .3rem; font-size: .76rem; }
+.sc-wmark { display: flex; align-items: center; gap: .45rem; padding: .35rem .7rem .45rem; font-size: .8rem; color: var(--muted); border-bottom: 1px solid var(--line); margin-bottom: .15rem; cursor: pointer; }
+.sc-wmark input { accent-color: var(--c-onset-1); margin: 0; }
 
 /* Seitenleiste */
 /* Die Seitenleiste darf das Layout nicht verschieben: Sie ist so hoch wie der
@@ -304,6 +309,8 @@ body.sc-editing .sc-mark .icon { width: 40px; height: 40px; }
 .tl-loc::after { content: ''; position: absolute; top: 0; border: 7px solid transparent; border-top: 11px solid var(--c-rime-1); }
 .tl-loc.in { left: -1px; } .tl-loc.in::after { left: -6px; }
 .tl-loc.out { right: -1px; } .tl-loc.out::after { right: -6px; }
+.tl-lane.blade .tl-clip, .tl-lane.blade .tl-word { cursor: crosshair; }
+.tl-blade { position: absolute; width: 2px; margin-left: -1px; background: var(--fg); z-index: 5; pointer-events: none; box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg, #000) 60%, transparent); }
 .tl-playhead { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; margin-left: -1px; background: var(--c-onset-1); pointer-events: none; z-index: 3; }
 .tl-playhead::before { content: ''; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top-color: var(--c-onset-1); }
 .sc-keys { margin: -.4rem 0 0; color: var(--muted); font-size: .76rem; line-height: 1.5; }
@@ -375,6 +382,7 @@ body.sc-editing .sc-mark .icon { width: 40px; height: 40px; }
 .sc-pop-foot .sc-seg-btn { font-size: .76rem; padding: .1rem .45rem; }
 .sc-ctx { min-width: 15rem; padding: .3rem; display: grid; }
 .sc-ctx button { display: flex; justify-content: space-between; gap: 1.5rem; text-align: left; background: none; border: 0; border-radius: 6px; padding: .4rem .6rem; font: inherit; font-size: .88rem; color: var(--fg); cursor: pointer; }
+.sc-ctx-note { margin: 0; padding: .4rem .6rem; max-width: 19rem; font-size: .78rem; line-height: 1.4; color: var(--muted); }
 .sc-ctx button:hover:not(:disabled) { background: var(--card-bg); }
 .sc-ctx button:disabled { opacity: .45; cursor: default; }
 .sc-ctx kbd { font: inherit; font-size: .75rem; color: var(--muted); }
@@ -415,3 +423,40 @@ body.sc-editing .sc-mark .icon { width: 40px; height: 40px; }
   .sc-steps .detail { grid-column: 2; text-align: left; }
 }
 body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
+
+/* ------------------------------------------------------------------ KI: Warten und Umschreiben */
+/* kleiner Bruder von „Spoonerize!“: derselbe drehende Farbring, beim Warten schnell */
+.pill-button.sc-pill { padding: .62rem 1.35rem; font-size: 11px; letter-spacing: 1.2px; display: inline-flex; align-items: center; gap: .45rem; }
+.sc-ideas .pill-button.sc-pill { padding: .62rem 1.35rem; }
+.pill-button.sc-pill.busy { --spin: .9s; --ring: 2.5px; }
+/* Statuszeile beim Warten: ein Farbschimmer läuft durch den Text */
+.sc-busy-text {
+  background: linear-gradient(90deg, var(--muted) 0%, var(--muted) 35%, var(--c-onset-1) 45%, var(--c-rime-1) 55%, var(--muted) 65%, var(--muted) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: sc-shimmer 1.6s linear infinite;
+}
+@keyframes sc-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+.sc-busy { display: flex; align-items: center; gap: .6rem; margin: 0; font-size: .85rem; }
+.sc-busy-ring {
+  --angle: 0deg; flex: none; width: 1.15rem; height: 1.15rem; border-radius: 50%;
+  background: conic-gradient(from var(--angle), var(--c-onset-1), var(--c-rime-1), var(--c-onset-2), var(--c-rime-2), var(--c-onset-1));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  animation: spin .9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .sc-busy-text, .sc-busy-ring, .pill-button.sc-pill.busy { animation-duration: 6s; } }
+.sc-ai { display: grid; gap: .5rem; border-top: 1px solid var(--line); padding-top: .65rem; }
+.sc-ai-from { margin: 0; font-size: .82rem; color: var(--muted); font-style: italic; }
+.sc-ai-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+.sc-ai-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .5rem; align-items: center; font-size: .88rem; line-height: 1.35; }
+.sc-ai-use { padding: .2rem .6rem; }
+
+/* ------------------------------------------------------------------ weitere Quellen */
+.sc-srcbox { border: 1px solid var(--line); border-radius: 12px; padding: .8rem 1rem; display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: center; font-size: .9rem; }
+.sc-srcbox p { margin: 0; flex: 1 1 100%; line-height: 1.45; }
+.sc-srcmap { display: grid; grid-template-columns: auto auto; gap: .2rem .6rem; align-items: center; font-size: .85rem; color: var(--muted); }
+.sc-srcmap small { grid-column: 1 / -1; font-size: .75rem; }
+.sc-srcmap select { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: .15rem .3rem; }
+.sc-act-main { border-color: var(--c-onset-1) !important; color: var(--c-onset-1) !important; }
+.sc-error-inline { color: var(--c-onset-1); }
