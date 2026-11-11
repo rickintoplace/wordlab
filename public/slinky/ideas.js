@@ -13,6 +13,8 @@ What makes a good YTP line:
 - near-miss words: change or add one sound of a word the speaker says to get a ruder or sillier one ("hinten" → "Hintern", "Wurzeln" → "Wurst", "pan" → "pants"). The tool builds these well, because almost all of their sounds are already there. This is one of the best YTP tricks: use it in several lines.
 - real sentences: grammatical (articles, endings and word order right), so the listener understands the joke at once. Absurd content, correct form. A garbled word salad is not funny.
 - no stutter loops ("die die die") – they rarely work
+- timing: a dramatic pause before the punchline sells it. Write "…" where the speaker should stop for a moment before the last word or phrase ("Und dann kam die Beute … Scheiße."). The tool turns "…" into a real pause. Use it in a few lines, not in all.
+- contrast: a long, serious, complicated build-up followed by something very short and stupid
 Short and punchy beats long. Do not explain jokes. Every line must be different in structure and joke – not ten variations of one idea. Make at least half of them rude, gross or profane: YTP is not polite. Skip lines that are merely odd: if a line would not make a teenager laugh or groan, drop it.
 
 Recombine, don't quote: build each line from chunks of one to three words taken exactly as they stand in the transcript ("im Wasser", "die ganze", "haben Hunger"), glued together from different places. Chunks keep their natural melody, so a line made of a few chunks sounds far more natural than one made of single words from everywhere. But never keep more than three words in a row from the original, and never keep its meaning. A line that could appear in the original is a failed line.
@@ -119,6 +121,101 @@ export async function rewriteIdeas({ key, model = DEFAULT_MODEL, words, lang, li
     ok = [...new Set([...ok, ...usableLines(parseLines(r.content, 30).filter(t => !same(t)), words, 2).ok])];
   }
   return { lines: ok, cost };
+}
+
+// ---------------------------------------------------------------- Fundstücke
+const FINDS = `You help with YouTube Poop (YTP) sentence mixing. You get the transcript of a video, split into numbered sentences. Find passages that are already funny on their own, or become funny with a tiny edit – the kind of material a YTP editor "pans for gold" for. Funny-as-is clips are rare: return at most two of them, and only if they are really funny when heard. Most finds need a small edit.
+
+The transcript was made by speech recognition and has spelling mistakes ("Schminne" for "Spinne", "ungeftig" for "ungiftig"). In the video these words sound normal, so a misspelling is never a joke – the listener only hears the sound. Judge every find by how it sounds, not how it is spelled. Likewise, a pause alone does not make a sentence funny; the words must change or the cut must reveal something.
+
+Look for:
+- accidental double meanings and innuendo when the passage is cut out of its context
+- passages that sound absurd, rude or embarrassing on their own
+- a sentence that turns funny if it stops early (cut right after a word that changes its meaning)
+- a sentence that turns funny if one or two words are swapped, dropped or added (prefer words the speaker says elsewhere; a near-miss word like "hinten" → "Hintern" also works)
+- two passages that are funny right after each other are NOT what we want here: one passage per find
+- variety: every find needs its own kind of joke. Never use the same new word in more than two finds (not "Löwe" in every second edit), and do not just swap one animal for another.
+- YTP is not polite: at least half of the finds should be rude, crude, gross or innuendo – the calm documentary voice makes it funny.
+
+Rules:
+- "quote": the passage exactly as it stands in the transcript, consecutive words from one sentence, 2 to 20 words. Copy it letter by letter.
+- "edit": the minimally changed version (the fewer changes, the better – keep the speaker's own words and melody), or "" if the quote is funny as it is. It must differ in words from the quote (cut short, swapped, dropped or added words). A "…" for a dramatic pause before the punchline may be added to such an edit.
+- "why": at most 8 words.
+Order funniest first. Keep it obvious parody. No slurs against groups of people, nothing sexual involving children.`;
+
+/** Transkript in nummerierte Sätze (an Satzzeichen und längeren Pausen). → { text, sentences: [[Wortindex…]] } */
+export function transcriptSentences(words, maxWords = 9000) {
+  const sentences = [];
+  let cur = [];
+  words.forEach((w, i) => {
+    if (i >= maxWords) return;
+    const prev = words[i - 1];
+    if (cur.length && (/[.!?]$/.test(prev.w) || w.s - prev.e > 1.2 || w.spk !== prev.spk)) { sentences.push(cur); cur = []; }
+    cur.push(i);
+  });
+  if (cur.length) sentences.push(cur);
+  return { text: sentences.map((s, k) => `${k + 1}. ${s.map(i => words[i].w).join(' ')}`).join('\n'), sentences };
+}
+
+/** Wortfolge `quote` im Transkript finden (Schreibung ohne Satzzeichen, groß/klein egal). → [Wortindex…] oder null */
+export function locateQuote(words, quote) {
+  const key = w => w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  const q = quote.split(/\s+/).map(key).filter(Boolean);
+  if (q.length < 2) return null;
+  const ks = words.map(w => key(w.w));
+  for (let i = 0; i + q.length <= ks.length; i++) {
+    let k = 0;
+    while (k < q.length && ks[i + k] === q[k]) k++;
+    if (k === q.length) return Array.from({ length: q.length }, (_, j) => i + j);
+  }
+  return null;
+}
+
+/**
+ * Fundstücke holen: Stellen, die schon lustig sind oder mit kleinem Eingriff werden.
+ * `words` = [{w, s, e, spk}] (ein Sprecher oder alle). → { finds: [{quote, edit, why, idx}], cost }
+ */
+export async function findGold({ key, model = DEFAULT_MODEL, words, lang, topic = '', count = 12, fetchFn = fetch }) {
+  const { text } = transcriptSentences(words);
+  const language = lang === 'de' ? 'German' : 'English';
+  const messages = [
+    { role: 'system', content: FINDS },
+    { role: 'user', content: `Language: ${language}.${topic ? `\nTheme or target of the jokes: ${topic}` : ''}
+Find ${count} passages. Reply as JSON: {"finds": [{"quote": "…", "edit": "…", "why": "…"}]}
+
+Transcript:
+${text}` },
+  ];
+  const { content, usage } = await askOpenRouter({ key, model, messages, fetchFn });
+  let raw = [];
+  try { raw = JSON.parse(content.replace(/^```(?:json)?|```$/gm, '').trim()).finds ?? []; } catch { raw = []; }
+  const finds = [];
+  for (const f of raw) {
+    if (!f || typeof f.quote !== 'string') continue;
+    const idx = locateQuote(words, f.quote);
+    if (!idx) continue;
+    const quote = idx.map(i => words[i].w).join(' ');
+    const edit = typeof f.edit === 'string' && f.edit.trim() && f.edit.trim() !== f.quote.trim() ? f.edit.trim() : '';
+    if (!finds.some(x => x.quote === quote && x.edit === edit)) finds.push({ quote, edit, why: String(f.why ?? '').slice(0, 80), idx });
+  }
+  return { finds, cost: usage?.cost ?? 0, asked: raw.length };
+}
+
+/**
+ * Welche Wörter der Bearbeitung sind unverändert aus dem Zitat? (längste gemeinsame
+ * Teilfolge nach Schreibung) → Map: Wortposition in edit → Position im Zitat
+ */
+export function keptWords(quoteWords, editWords) {
+  const key = w => w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  const a = quoteWords.map(key), b = editWords.map(key);
+  const L = Array.from({ length: a.length + 1 }, () => new Int32Array(b.length + 1));
+  for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--)
+    L[i][j] = a[i] && a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const map = new Map();
+  for (let i = 0, j = 0; i < a.length && j < b.length;) {
+    if (a[i] && a[i] === b[j]) { map.set(j, i); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) i++; else j++;
+  }
+  return map;
 }
 
 /** Antwort des Modells → Zeilen (JSON, sonst eine Zeile pro Satz). */

@@ -9,7 +9,7 @@ import { endOf, speedOf, srcSpan, timeOf, toggleCrossfades, migrate, keptSpan } 
 import { Player } from './player.js';
 import * as cache from './cache.js';
 import { pack, unpack, estimateMB } from './projfile.js';
-import { DEFAULT_MODEL, generateIdeas, rewriteIdeas, buildCost, pickIdeas } from './ideas.js';
+import { DEFAULT_MODEL, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, pickIdeas } from './ideas.js';
 
 paintIcons();
 const $ = id => document.getElementById(id);
@@ -295,8 +295,13 @@ async function ready(m) {
     b.className = 'sc-word';
     b.dataset.spk = w.spk;
     b.textContent = w.w;
-    b.title = 'Click to listen, double-click to place it at the playhead';
-    b.addEventListener('click', () => player.listen(m.voice, w.s - 0.02, w.e + 0.03));
+    b.title = 'Click to listen, Shift-click to select up to here, double-click to place it at the playhead';
+    b.addEventListener('click', e => {
+      const i = m.words.indexOf(w);
+      if (e.shiftKey && tAnchor != null) { selectTranscript(tAnchor, i); return; }
+      tAnchor = i; selectTranscript(null);
+      player.listen(m.voice, w.s - 0.02, w.e + 0.03);
+    });
     b.addEventListener('dblclick', () => insertSnip({ label: w.w.replace(/[^\p{L}\p{N}'-]/gu, ''), s: w.s, e: w.e }));
     return b;
   }));
@@ -430,6 +435,8 @@ function renderBin() {
       pickAlternative({ ...forBin(b), wi, si: -1, x: ev.clientX, y: r.bottom });
     });
     if (b.ai) line.insertAdjacentHTML('afterbegin', '<span class="sc-tag" title="Idea from the language model">AI</span> ');
+    else if (b.orig) line.insertAdjacentHTML('afterbegin', '<span class="sc-tag sc-tag-orig" title="As they say it in the video">Orig</span> ');
+    if (b.note) li.title = `${b.note}\n\n${li.title}`;
     li.append(play, line, acts, strip);
     li.addEventListener('click', () => selectBin(b.id));
     li.addEventListener('dragstart', ev => {
@@ -553,17 +560,32 @@ function lips(cs, on) {
   if (on) for (const c of cs) {
     // Stücke im Ton des Clips (Quelle → Video-Zeit), nur der benutzte Teil
     const parts = c.type === 'take' ? c.take.pieces.map(p => ({ a: p.at, b: p.at + p.len, v: p.start })) : [{ a: c.src, b: c.src + srcSpan(c), v: c.src }];
+    const segs = [];
     for (const p of parts) {
       const a = Math.max(p.a, Math.min(c.src, c.src + srcSpan(c))), b = Math.min(p.b, c.src + srcSpan(c));
       if (b - a < 0.02) continue;
       let t0 = timeOf(c, a), t1 = timeOf(c, b);
       if (t0 > t1) [t0, t1] = [t1, t0];
-      tl.add({ track: lipsTrack(), type: 'lips', at: t0, len: t1 - t0, src: p.v + (a - p.a), speed: speedOf(c), reverse: !!c.reverse, label: '', ref: c.id });
+      segs.push({ t0, t1, src: p.v + (a - p.a), short: b - a < LIPS_MIN });
     }
+    // Kurze Stücke (einzelne Laute, Silben) bekommen kein eigenes Bild: Das Bild davor läuft
+    // weiter (wie ein J-Cut), am Anfang setzt das nächste Bild entsprechend früher ein.
+    // Rückwärts bleibt jedes Stück für sich.
+    const out = [];
+    let lead = 0;
+    for (const sg of c.reverse ? segs : segs.sort((x, y) => x.t0 - y.t0)) {
+      if (!c.reverse && sg.short && out.length) { out.at(-1).t1 = sg.t1; continue; }
+      if (!c.reverse && sg.short) { lead += sg.t1 - sg.t0; continue; }
+      if (lead) { sg.src = Math.max(0, sg.src - lead * speedOf(c)); sg.t0 -= lead; lead = 0; }
+      out.push(sg);
+    }
+    if (lead && !out.length) out.push({ ...segs[0], t1: segs.at(-1).t1 });   // nur kurze Stücke: eins für alle
+    for (const sg of out) tl.add({ track: lipsTrack(), type: 'lips', at: sg.t0, len: sg.t1 - sg.t0, src: sg.src, speed: speedOf(c), reverse: !!c.reverse, label: '', ref: c.id });
   }
   tl.changed();
 }
 const hasLips = c => S.tl.clips.some(x => x.ref === c.id);
+const LIPS_MIN = 0.25;          // kürzere Stücke zeigen kein eigenes Bild
 /** Ton aus der Stimme des Videos: Dazu gibt es Lippen. */
 const isVoiced = c => c.type === 'take' || c.type === 'snip' || c.type === 'orig';
 
@@ -641,6 +663,7 @@ function inspect(sel) {
     const on = voiced.every(hasLips);
     btn(on ? 'Hide lips' : 'Show lips', () => lips(voiced, !on), 'film', 'L · Put the video of them saying each piece on the Lips track');
   }
+  if (voiced.length && voiced.some(x => clipText(x))) btn('Add to list', () => clipsToList(voiced).catch(err => fail(err.message)), 'list-plus', 'Put this into the list of sentences, to edit or reuse it');
   if (voiced.length && voiced.some(x => clipText(x))) btn('AI rewrite', () => aiRewrite(voiced), 'sparkles', 'Let a language model turn this into YTP versions (needs your OpenRouter key under Ideas)');
   if (!many && c.type === 'snip') {
     const row = document.createElement('div');
@@ -659,7 +682,9 @@ function inspect(sel) {
     });
     box.append(row);
   }
-  btn(sel.every(x => x.muted) ? 'Unmute' : 'Mute', () => tools.mute(), sel.every(x => x.muted) ? 'volume-2' : 'volume-x', 'M');
+  const pics = sel.every(x => S.tl.kindOf(x) === 'video'), off = sel.every(x => x.muted);
+  if (pics) btn(off ? 'Show' : 'Hide', () => tools.mute(), off ? 'eye' : 'eye-off', 'M · Hide this picture (the clip stays where it is)');
+  else btn(off ? 'Unmute' : 'Mute', () => tools.mute(), off ? 'volume-2' : 'volume-x', 'M');
   btn('Delete', () => tools.del(), 'trash', 'Del (Shift+Del closes the gap)');
   box.append(acts);
   const found = aiFor(sel);
@@ -1194,9 +1219,10 @@ function contextMenu({ x, y, t, onClip, onRuler }) {
     if (r) items.push(null, ['Clear range', 'Alt+X', 'clearRange']);
   } else if (onClip && n) {
     items.push(['Cut', 'Ctrl+X', 'cut'], ['Copy', 'Ctrl+C', 'copy'], ['Duplicate', 'Ctrl+D', 'dup'], null,
-      ['Split at playhead', 'S', 'split'], ['Crossfade with neighbours', 'X', 'xfade'], ['Backwards', 'R', 'reverse'], ['Mute', 'M', 'mute'], null);
+      ['Split at playhead', 'S', 'split'], ['Crossfade with neighbours', 'X', 'xfade'], ['Backwards', 'R', 'reverse'],
+      [S.tl.selection().every(x => S.tl.kindOf(x) === 'video') ? (S.tl.selection().every(x => x.muted) ? 'Show' : 'Hide') : (S.tl.selection().every(x => x.muted) ? 'Unmute' : 'Mute'), 'M', 'mute'], null);
     const voiced = S.tl.selection().filter(isVoiced);
-    if (voiced.length) items.push([voiced.every(hasLips) ? 'Hide lips' : 'Show lips', 'L', 'lips'], ...(voiced.some(clipText) ? [['AI rewrite…', '', () => aiRewrite(voiced)]] : []), null);
+    if (voiced.length) items.push([voiced.every(hasLips) ? 'Hide lips' : 'Show lips', 'L', 'lips'], ...(voiced.some(clipText) ? [['Add to list', '', () => clipsToList(voiced)], ['AI rewrite…', '', () => aiRewrite(voiced)]] : []), null);
     items.push(['Range around selection', '', 'rangeFromSelection'], null);
     items.push(['Delete', 'Del', 'del'], ['Delete and close gap', 'Shift+Del', () => tools.del(true)]);
   } else {
@@ -1312,6 +1338,99 @@ els.exportMenu.addEventListener('click', async e => {
     exporting = null; btn.innerHTML = label; btn.title = ''; S.player.mark = null; S.player.sync(S.tl.playhead);
   }
 });
+
+// ---------------------------------------------------------------- Sammeln
+// Gute Stellen des Originals in die Liste legen (aus dem Transkript oder von der Spur):
+// dort sind sie wie geschnittene Sätze – anhören, Wörter tauschen, auf eine Spur ziehen.
+let tAnchor = null;
+function selectTranscript(a, b = a) {
+  const bar = $('tsel');
+  for (const x of els.transcript.querySelectorAll('.sc-word.on')) x.classList.remove('on');
+  if (a == null) { bar.hidden = true; return; }
+  const [i0, i1] = a < b ? [a, b] : [b, a];
+  const idx = [];
+  const btns = els.transcript.children;
+  for (let i = i0; i <= i1; i++) { btns[i]?.classList.add('on'); if (S.words[i].e > S.words[i].s) idx.push(i); }
+  if (!idx.length) { bar.hidden = true; return; }
+  const text = idx.map(i => S.words[i].w).join(' ');
+  bar.hidden = false;
+  bar.innerHTML = `<span class="sc-tsel-text">“${esc(text.length > 120 ? text.slice(0, 117) + '…' : text)}”</span>`;
+  const mk = (label, ic, fn) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'sc-act'; x.append(icon(ic, { size: '14px' }), ' ', label); x.addEventListener('click', fn); bar.append(x); };
+  const w0 = S.words[idx[0]], w1 = S.words[idx.at(-1)];
+  mk('Listen', 'play', () => S.player.listen(S.voice, w0.s - 0.03, w1.e + 0.05));
+  mk('Add to list', 'list-plus', () => addPassage(idx).then(() => selectTranscript(null)).catch(err => fail(err.message)));
+  mk('Place at playhead', 'plus', () => insertSnip({ label: text.length > 40 ? text.slice(0, 38) + '…' : text, s: w0.s - 0.03, e: w1.e + 0.05 }));
+}
+
+/** Eine Stelle des Originals (Wortindizes) als Satz in die Liste – klingt genau wie im Video. */
+async function addPassage(idx, extra = {}) {
+  const spk = S.speakers.length > 1 ? S.words[idx[0]].spk : null;
+  const r = await request({ type: 'phrase', si: idx, speaker: spk });
+  const b = { id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, text: r.text, audio: r.audio, words: r.words,
+    pieces: r.pieces, speaker: r.speaker, force: r.force, rev: 0, orig: true, ...extra };
+  S.bin.unshift(b);
+  renderBin(); save();
+  return b;
+}
+
+/** Gewählte Ton-Clips in die Liste: Sätze als Kopie, Originalstimme als Stelle. */
+async function clipsToList(cs) {
+  for (const c of [...cs].sort((a, b) => b.at - a.at)) {
+    if (c.type === 'take') {
+      const t = c.take;
+      S.bin.unshift({ id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, text: t.text, audio: t.audio, words: t.words, pieces: t.pieces, speaker: t.speaker, force: t.force, rev: 0 });
+    } else {
+      const idx = clipWords(c);
+      if (idx.length) await addPassage(idx);
+    }
+  }
+  renderBin(); save();
+}
+
+// ---------------------------------------------------------------- Fundstücke
+const findsGo = $('finds-go');
+findsGo.addEventListener('click', () => S && findGoldUI(ideas.topic.value.trim()).catch(err => { ideas.status.textContent = err.message; idleFinds(); }));
+const idleFinds = () => { findsGo.disabled = false; ideas.go.disabled = false; findsGo.classList.remove('busy'); ideas.status.classList.remove('sc-busy-text'); };
+/** Das Sprachmodell sucht Stellen, die so oder mit kleinem Eingriff lustig sind; sie kommen in die Liste. */
+async function findGoldUI(topic = '') {
+  const key = ideas.key.value.trim(), model = ideas.model.value.trim() || DEFAULT_MODEL;
+  if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; ideas.key.focus(); return; }
+  store.set('slinky-openrouter-key', key); store.set('slinky-openrouter-model', model);
+  findsGo.disabled = true; ideas.go.disabled = true; findsGo.classList.add('busy'); ideas.status.classList.add('sc-busy-text');
+  ideas.status.textContent = 'Reading everything they say…';
+  const spk = speaker();
+  const pos = S.words.map((w, i) => i).filter(i => spk == null || S.words[i].spk === spk);
+  const { finds } = await findGold({ key, model, words: pos.map(i => S.words[i]), lang: S.lang, topic });
+  if (!finds.length) throw new Error('The model found nothing usable. Try again.');
+  const scored = [];
+  for (const [n, f] of finds.entries()) {
+    ideas.status.textContent = `Cutting find ${n + 1} of ${finds.length}…`;
+    const idx = f.idx.map(k => pos[k]);
+    try {
+      if (!f.edit) { scored.push({ f, idx, cost: 0 }); continue; }
+      // Bearbeitung: Was aus dem Zitat bleibt, bleibt genau dieses Vorkommen (mit seinen Pausen)
+      const ew = f.edit.split(/\s+/).filter(Boolean);
+      const kept = keptWords(idx.map(i => S.words[i].w), ew);
+      const words = {}, pauses = {};
+      for (const [j, k] of kept) {
+        words[j] = idx[k];
+        const nk = kept.get(j + 1);
+        if (nk === k + 1) { const a = S.words[idx[k]], b = S.words[idx[k + 1]]; if (b.s - a.e > 0.08) pauses[j] = Math.min(1.5, b.s - a.e); }
+      }
+      const r = await request({ type: 'mix', text: f.edit, speaker: spk, force: { words, pins: {}, avoid: {}, pauses } });
+      scored.push({ f, idx, r, cost: buildCost(r.words) });
+    } catch { /* nächste */ }
+  }
+  const best = pickIdeas(scored, 8);
+  for (const { f, idx, r } of best.reverse()) {
+    const note = `${f.why ? f.why + ' · ' : ''}Original: “${f.quote}”`;
+    if (r) S.bin.unshift({ id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, text: f.edit, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force, rev: 0, ai: true, note });
+    else await addPassage(idx, { note: f.why ? `${f.why} · as they say it` : '' });
+  }
+  renderBin(); save();
+  ideas.status.textContent = `Added ${best.length} finds to the list – originals are marked “Orig”, small edits “AI”. Hover one to see why.`;
+  idleFinds();
+}
 
 // ---------------------------------------------------------------- Weitere Quellen
 // Andere Aufnahmen desselben Sprechers (z. B. weitere Folgen einer Reihe): Sie werden genauso
@@ -1558,7 +1677,7 @@ async function loadModels() {
       .map(m => Object.assign(document.createElement('option'), { value: m.id })));
   } catch { /* egal */ }
 }
-const idle = () => { ideas.go.disabled = false; ideas.go.classList.remove('busy'); ideas.status.classList.remove('sc-busy-text'); };
+const idle = () => { ideas.go.disabled = false; findsGo.disabled = false; ideas.go.classList.remove('busy'); ideas.status.classList.remove('sc-busy-text'); };
 ideas.go.addEventListener('click', () => S && getIdeas({ topic: ideas.topic.value.trim() }).catch(err => { ideas.status.textContent = err.message; idle(); }));
 
 /** Satzvorschläge holen, schneiden, bewerten; die besten `keep` kommen in die Liste. */
@@ -1566,7 +1685,7 @@ async function getIdeas({ topic = '', count = 16, keep = 5 } = {}) {
   const key = ideas.key.value.trim(), model = ideas.model.value.trim() || DEFAULT_MODEL;
   if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; ideas.key.focus(); return []; }
   store.set('slinky-openrouter-key', key); store.set('slinky-openrouter-model', model);
-  ideas.go.disabled = true; ideas.go.classList.add('busy'); ideas.status.classList.add('sc-busy-text');
+  ideas.go.disabled = true; findsGo.disabled = true; ideas.go.classList.add('busy'); ideas.status.classList.add('sc-busy-text');
   const spk = speaker();
   const ws = S.words.filter(w => spk == null || w.spk === spk);
   // Höchstens zwei gebaute Wörter pro Zeile; ob sie verständlich sind, zeigt der Schnitt

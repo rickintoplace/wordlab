@@ -116,7 +116,14 @@ sounds; its picture plays where its pieces are used.
 speaker actually says, with at most two words that have to be built from their
 syllables. Every line is cut, and only the funniest whose built words still fit
 together (low join cost) are kept. “AI rewrite” on selected voice clips does the
-same for just that passage and replaces it with the version you pick.
+same for just that passage and replaces it with the version you pick. “Find gold” has the model read the whole transcript for
+passages that are funny as they are or with a tiny edit (stop early, swap a
+word); the edits keep the speaker's own words where they are unchanged. In
+lines, “…” makes a dramatic pause (0.8 s) before the punchline.
+
+Good passages can be collected in the list: Shift-click a range in the
+transcript, or “Add to list” on clips. Lips skip pieces shorter than 0.25 s
+(the picture before keeps running), and any picture clip can be hidden (M).
 
 ### Scripting it
 

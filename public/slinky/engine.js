@@ -242,7 +242,8 @@ function featDist(A, B) {
 // ---------- Ziel ----------
 function posCode(initial, final) { return initial && final ? 'IF' : initial ? 'I' : final ? 'F' : 'M'; }
 function boundType(word, pause) {
-  if (/[.!…]["“”»]*$/.test(word)) return 'S';
+  if (/(…|\.\.\.)["“”»]*$/.test(word)) return 'C';         // Kunstpause: Spannung, kein Schluss
+  if (/[.!]["“”»]*$/.test(word)) return 'S';
   if (/\?["“”»]*$/.test(word)) return 'Q';
   if (/[,;:–—]$/.test(word) || pause) return 'C';
   return '';
@@ -275,7 +276,8 @@ export function targetPhones(text, lang, g2pLex, src = null, { inst = {}, pauses
     let toks = known ? (known.toks ?? known) : pr.toks.map(x => accent?.has(x.t) ? { ...x, t: accent.get(x.t) } : x);
     if (!known && lexicon && g2pLex) toks = speakerParts(key, toks, src, lang, g2pLex);
     // pauses[wi]: Pause nach dem Wort wie in der Quelle (beim Bearbeiten der Originalstimme)
-    const pause = pauses[wi] ?? (/[.!?…]$/.test(w) ? 0.35 : /[,;:–—]$/.test(w) ? 0.15 : 0);
+    // „…“: Kunstpause (vor der Pointe) – deutlich länger als ein Satzende
+    const pause = pauses[wi] ?? (/(…|\.\.\.)$/.test(w) ? 0.8 : /[.!?]$/.test(w) ? 0.35 : /[,;:–—]$/.test(w) ? 0.15 : 0);
     let lastV = toks.length - 1;
     while (lastV > 0 && !isVowel(toks[lastV].t)) lastV--;
     toks.forEach((x, k) => out.push({ t: x.t, fin: k >= lastV, cls: soundClass(x.t), stress: x.stress, w: wi,

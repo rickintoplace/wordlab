@@ -163,9 +163,10 @@
                 </div>
                 <div class="sc-row">
                   <button type="button" class="pill-button sc-pill" id="ideas-go"><span data-icon="sparkles" data-icon-size="14px"></span> Get ideas</button>
+                  <button type="button" class="pill-button sc-pill" id="finds-go" title="Let the model look through everything they say for passages that are funny as they are, or with a tiny edit"><span data-icon="zoom" data-icon-size="14px"></span> Find gold</button>
                   <span class="sc-note" id="ideas-status"></span>
                 </div>
-                <p class="sc-note">A language model writes sentences from the words in this video; Slinky-Cut cuts each one and keeps the funniest that cut cleanly. This sends the transcript (text only, never the video) to OpenRouter and the model you choose. Your key stays in this browser. Get one at openrouter.ai/keys.</p>
+                <p class="sc-note">A language model writes sentences from the words in this video; Slinky-Cut cuts each one and keeps the funniest that cut cleanly. <b>Find gold</b> instead looks for passages that are funny as they are or with a tiny edit. This sends the transcript (text only, never the video) to OpenRouter and the model you choose. Your key stays in this browser. Get one at openrouter.ai/keys.</p>
               </div>
               <ol class="sc-bin" id="bin" hidden aria-label="Your cut sentences"></ol>
             </form>
@@ -188,7 +189,9 @@
 
       <details class="sc-transcript">
         <summary>Everything they say <span id="wordcount"></span></summary>
+        <p class="sc-note">Click a word to listen, Shift-click another to select everything in between.</p>
         <p id="transcript"></p>
+        <div class="sc-tsel" id="tsel" hidden></div>
       </details>
     </section>
 

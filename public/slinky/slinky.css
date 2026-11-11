@@ -463,3 +463,10 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .sc-srcmap select { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: .15rem .3rem; }
 .sc-act-main { border-color: var(--c-onset-1) !important; color: var(--c-onset-1) !important; }
 .sc-error-inline { color: var(--c-onset-1); }
+
+/* ------------------------------------------------------------------ Sammeln aus dem Transkript */
+.sc-word.on { background: color-mix(in oklab, var(--c-onset-1) 22%, transparent); color: var(--fg); border-radius: 0; }
+.sc-tsel { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .6rem .8rem; margin-top: .5rem;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-size: .88rem; }
+.sc-tsel-text { flex: 1 1 16rem; font-style: italic; color: var(--muted); }
+.sc-tag-orig { background: var(--c-rime-1); }
