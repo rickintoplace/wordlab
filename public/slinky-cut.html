@@ -168,7 +168,11 @@
                 </div>
                 <p class="sc-note">A language model writes sentences from the words in this video; Slinky-Cut cuts each one and keeps the funniest that cut cleanly. <b>Find gold</b> instead looks for passages that are funny as they are or with a tiny edit. This sends the transcript (text only, never the video) to OpenRouter and the model you choose. Your key stays in this browser. Get one at openrouter.ai/keys.</p>
               </div>
-              <ol class="sc-bin" id="bin" hidden aria-label="Your cut sentences"></ol>
+              <div class="sc-bintabs" id="bintabs" role="tablist" hidden>
+                <button type="button" role="tab" data-tab="cut" aria-selected="true">Sentences <span></span></button>
+                <button type="button" role="tab" data-tab="gold" aria-selected="false" title="What you keep: saved sentences, words and finds. Drag things here to save them."><i class="sc-tabstar" data-icon="star" data-icon-size="13px"></i> Gold <span></span></button>
+              </div>
+              <ol class="sc-bin" id="bin" hidden aria-label="Your sentences"></ol>
             </form>
 
             <div class="sc-panel" id="inspector"></div>

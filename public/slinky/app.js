@@ -9,7 +9,7 @@ import { endOf, speedOf, srcSpan, timeOf, toggleCrossfades, migrate, keptSpan } 
 import { Player } from './player.js';
 import * as cache from './cache.js';
 import { pack, unpack, estimateMB } from './projfile.js';
-import { DEFAULT_MODEL, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, pickIdeas } from './ideas.js';
+import { DEFAULT_MODEL, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, streamPick } from './ideas.js';
 
 paintIcons();
 const $ = id => document.getElementById(id);
@@ -237,6 +237,7 @@ async function ready(m) {
   // Gespeichertes Projekt fortsetzen, sonst: Video, Originalstimme und Musik als je ein Clip
   const saved = await cache.get(`project|${key}`).catch(() => null);
   S.bin = saved?.bin ?? [];
+  S.binTab = 'cut';
   renderBin();
   const voiceLen = Math.min(duration, m.voice.length / SR);
   if (saved?.clips?.length) {
@@ -374,8 +375,9 @@ els.say.addEventListener('submit', async e => {
   go.disabled = true;
   try {
     const r = await request({ type: 'mix', text, speaker: speaker() });
-    const b = { id: `t${Date.now().toString(36)}`, text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: speaker(), force: r.force, rev: 0 };
+    const b = { id: newId(), text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: speaker(), force: r.force, rev: 0 };
     S.bin.unshift(b);
+    S.binTab = 'cut';
     renderBin();
     selectBin(b.id);
     save();
@@ -383,8 +385,81 @@ els.say.addEventListener('submit', async e => {
   } catch (err) { fail(err.message); } finally { go.disabled = false; }
 });
 
+// Zwei Listen in einer: „Sentences“ (alles Geschnittene, Ideen) und „Gold“ (was man
+// behalten will: Fundstücke, gesammelte Stellen, gemerkte Sätze und Wörter). Gold-Einträge
+// sind eigene Kopien (gold: true); ☆ legt eine an, Ziehen auf den Reiter auch.
+const newId = () => `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+const goldKey = x => (x.snip ? `s|${x.snip.s.toFixed(3)}|${x.snip.e.toFixed(3)}` : `t|${x.text}|${x.audio.length}`);
+const inGold = x => S.bin.some(g => g.gold && goldKey(g) === goldKey(x));
+/** Eine Kopie in die Gold-Liste (nichts doppelt). */
+function saveGold(item) {
+  if (!item || inGold(item)) { pulseGold(); return null; }
+  const g = { ...item, id: newId(), gold: true };
+  S.bin.unshift(g);
+  renderBin(); save(); pulseGold();
+  return g;
+}
+function pulseGold() {
+  const t = $('bintabs').querySelector('[data-tab="gold"]');
+  t.classList.remove('pulse'); void t.offsetWidth; t.classList.add('pulse');
+}
+/** Ein Wort eines Satzes als eigener Eintrag (sein Ton, seine Stücke). */
+function wordItem(b, wi) {
+  const w = b.words[wi], dur = b.audio.length / SR;
+  const a = Math.max(0, w.start - 0.012), e = Math.min(dur, w.end + 0.02);
+  const audio = b.audio.slice(Math.round(a * SR), Math.round(e * SR)), F = Math.round(0.003 * SR);
+  for (let i = 0; i < Math.min(F, audio.length); i++) { audio[i] *= i / F; audio[audio.length - 1 - i] *= i / F; }
+  const sh = y => ({ ...y, start: y.start - a, end: y.end - a });
+  const pieces = (b.pieces ?? []).filter(p => p.at < e && p.at + p.len > a).map(p => {
+    const s0 = Math.max(a, p.at), s1 = Math.min(e, p.at + p.len);
+    return { ...p, start: p.start + (s0 - p.at), end: p.start + (s1 - p.at), at: s0 - a, len: s1 - s0 };
+  });
+  return { id: newId(), text: w.w.replace(/[^\p{L}\p{N}'-]/gu, '') || w.w, audio, words: [{ ...sh(w), syls: (w.syls ?? []).map(sh) }],
+    pieces, speaker: b.speaker, force: {}, rev: 0, word: true, ai: b.ai, note: `From “${b.text}”` };
+}
+/** Ein Stück Originalstimme (Fundstück der Suche) als Eintrag. */
+function snipItem({ label, s, e }) {
+  return { id: newId(), text: label, audio: S.voice.slice(Math.round(s * SR), Math.round(e * SR)),
+    words: [{ w: label, start: 0, end: e - s, quality: 'whole', syls: [] }], pieces: [{ start: s, end: e, at: 0, len: e - s }],
+    snip: { s, e }, speaker: null, rev: 0, orig: true };
+}
+/** Ein Wort zum Ziehen (auf eine Spur oder auf „Gold“) und mit Rechtsklick-Menü. */
+function wordHandle(el, b, wi) {
+  el.draggable = true;
+  el.addEventListener('dragstart', ev => {
+    ev.stopPropagation();
+    const it = wordItem(b, wi);
+    dragging = { clip: takeClip(it, 0, 'a1'), item: it };
+    ev.dataTransfer.setData('text/plain', it.text);
+    ev.dataTransfer.effectAllowed = 'copy';
+  });
+  el.addEventListener('dragend', ev => { ev.stopPropagation(); dragging = null; S.tl.ghost(null); });
+  el.addEventListener('contextmenu', ev => {
+    ev.preventDefault(); ev.stopPropagation();
+    const w = b.words[wi].w;
+    showMenu([[`Save “${w}” in Gold`, '', () => saveGold(wordItem(b, wi))], [`Place “${w}” at the playhead`, '', () => placeTake(wordItem(b, wi), S.tl.playhead, voiceTrack())],
+      ['Drag a word onto a track or onto Gold to use it alone.', '', null]], ev.clientX, ev.clientY);
+  });
+}
+
 function renderBin() {
-  els.bin.replaceChildren(...S.bin.map(b => {
+  const gold = S.binTab === 'gold';
+  const items = S.bin.filter(b => !!b.gold === gold);
+  const tabs = $('bintabs');
+  tabs.hidden = !S.bin.length;
+  for (const t of tabs.querySelectorAll('[data-tab]')) {
+    const on = t.dataset.tab === (gold ? 'gold' : 'cut');
+    t.setAttribute('aria-selected', String(on));
+    t.querySelector('span').textContent = S.bin.filter(b => !!b.gold === (t.dataset.tab === 'gold')).length || '';
+  }
+  els.bin.hidden = !S.bin.length;
+  if (!items.length) {
+    els.bin.innerHTML = gold
+      ? '<li class="sc-hint">Nothing in Gold yet. Save sentences, words and finds with ☆ (or drag them onto “Gold”), select passages in the transcript, or let <b>Find gold</b> look for some.</li>'
+      : '<li class="sc-hint">Sentences you cut and AI ideas land here.</li>';
+    return;
+  }
+  els.bin.replaceChildren(...items.map(b => {
     const li = document.createElement('li');
     li.className = 'sc-bin-item' + (b.id === S.binSel ? ' on' : '');
     li.dataset.id = b.id;
@@ -401,16 +476,24 @@ function renderBin() {
       chip.type = 'button';
       chip.className = `sc-chip q ${w.quality}`;
       chip.textContent = w.w;
-      chip.title = 'Other ways to say this word or its syllables';
-      chip.addEventListener('click', ev => { ev.stopPropagation(); const r = chip.getBoundingClientRect(); pickAlternative({ ...forBin(b), wi, si: -1, x: r.left, y: r.bottom }); });
+      if (b.snip) chip.title = 'A piece of the original – drag it onto a track';
+      else {
+        chip.title = 'Click: other ways to say it · drag: use this word alone · right-click: save it in Gold';
+        chip.addEventListener('click', ev => { ev.stopPropagation(); const r = chip.getBoundingClientRect(); pickAlternative({ ...forBin(b), wi, si: -1, x: r.left, y: r.bottom }); });
+        if (b.words.length > 1) wordHandle(chip, b, wi);
+      }
       line.append(chip, ' ');
     });
     const acts = document.createElement('span');
     acts.className = 'sc-bin-acts';
-    const mk = (ic, title, fn) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'sc-mini sc-add'; x.title = title; x.append(icon(ic, { size: '14px' })); x.addEventListener('click', ev => { ev.stopPropagation(); fn(); }); acts.append(x); };
+    const mk = (ic, title, fn, cls = '') => { const x = document.createElement('button'); x.type = 'button'; x.className = `sc-mini sc-add ${cls}`; x.title = title; x.append(icon(ic, { size: '14px' })); x.addEventListener('click', ev => { ev.stopPropagation(); fn(); }); acts.append(x); return x; };
     mk('plus', 'Place at the playhead', () => placeTake(b, S.tl.playhead, voiceTrack()));
+    if (!gold) {
+      const saved = inGold(b);
+      mk('star', saved ? 'Saved in Gold' : 'Save in Gold (keep it)', () => saveGold(b), saved ? 'sc-star on' : 'sc-star');
+    }
     mk('copy', 'Copy (then paste on the timeline with Ctrl+V)', () => { clipboard = [takeClip(b, 0, 'a1')]; });
-    mk('trash', 'Remove from this list', () => { S.bin = S.bin.filter(x => x.id !== b.id); renderBin(); save(); });
+    mk('trash', gold ? 'Remove from Gold' : 'Remove from this list', () => { S.bin = S.bin.filter(x => x.id !== b.id); renderBin(); save(); });
     // Wie der Clip auf der Spur: Wellenform mit Wörtern und Silbenstrichen; ein Klick
     // auf eine Stelle öffnet die Alternativen genau für dieses Wort bzw. diese Silbe.
     const strip = document.createElement('div');
@@ -426,28 +509,53 @@ function renderBin() {
       for (const y of (w.syls ?? []).slice(1)) span.insertAdjacentHTML('beforeend', `<i style="left:${(100 * (y.start - w.start) / Math.max(0.01, w.end - w.start)).toFixed(2)}%"></i>`);
       strip.append(span);
     });
-    strip.title = 'Click a word to swap it or one of its syllables';
-    strip.addEventListener('click', ev => {
-      ev.stopPropagation();
-      const r = strip.getBoundingClientRect(), t = (ev.clientX - r.left) / r.width * dur;
-      let wi = b.words.findIndex(w => t >= w.start && t < w.end);
-      if (wi < 0) wi = b.words.reduce((k, w, i) => (Math.abs((w.start + w.end) / 2 - t) < Math.abs((b.words[k].start + b.words[k].end) / 2 - t) ? i : k), 0);
-      pickAlternative({ ...forBin(b), wi, si: -1, x: ev.clientX, y: r.bottom });
-    });
+    if (!b.snip) {
+      strip.title = 'Click a word to swap it or one of its syllables';
+      strip.addEventListener('click', ev => {
+        ev.stopPropagation();
+        const r = strip.getBoundingClientRect(), t = (ev.clientX - r.left) / r.width * dur;
+        let wi = b.words.findIndex(w => t >= w.start && t < w.end);
+        if (wi < 0) wi = b.words.reduce((k, w, i) => (Math.abs((w.start + w.end) / 2 - t) < Math.abs((b.words[k].start + b.words[k].end) / 2 - t) ? i : k), 0);
+        pickAlternative({ ...forBin(b), wi, si: -1, x: ev.clientX, y: r.bottom });
+      });
+    }
     if (b.ai) line.insertAdjacentHTML('afterbegin', '<span class="sc-tag" title="Idea from the language model">AI</span> ');
     else if (b.orig) line.insertAdjacentHTML('afterbegin', '<span class="sc-tag sc-tag-orig" title="As they say it in the video">Orig</span> ');
     if (b.note) li.title = `${b.note}\n\n${li.title}`;
     li.append(play, line, acts, strip);
     li.addEventListener('click', () => selectBin(b.id));
     li.addEventListener('dragstart', ev => {
-      dragging = { clip: takeClip(b, 0, 'a1') };
+      dragging = { clip: takeClip(b, 0, 'a1'), item: b };
       ev.dataTransfer.setData('text/plain', b.text);
       ev.dataTransfer.effectAllowed = 'copy';
     });
     li.addEventListener('dragend', () => { dragging = null; S.tl.ghost(null); });
     return li;
   }));
-  els.bin.hidden = !S.bin.length;
+}
+function showBinTab(tab) {
+  if (!S || S.binTab === tab) return;
+  S.binTab = tab;
+  renderBin();
+}
+$('bintabs').addEventListener('click', e => { const t = e.target.closest('[data-tab]'); if (t) showBinTab(t.dataset.tab); });
+// Ziehen auf „Gold“ (Reiter oder offene Gold-Liste) merkt es dort
+for (const el of [$('bintabs'), els.bin]) {
+  el.addEventListener('dragover', e => {
+    if (!dragging?.item || dragging.item.gold) return;
+    if (el === els.bin && S.binTab !== 'gold') return;
+    if (el !== els.bin && !e.target.closest('[data-tab="gold"]')) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+    $('bintabs').querySelector('[data-tab="gold"]').classList.add('drop');
+  });
+  el.addEventListener('dragleave', () => $('bintabs').querySelector('[data-tab="gold"]').classList.remove('drop'));
+  el.addEventListener('drop', e => {
+    $('bintabs').querySelector('[data-tab="gold"]').classList.remove('drop');
+    if (!dragging?.item || dragging.item.gold) return;
+    e.preventDefault();
+    saveGold(dragging.item);
+    dragging = null;
+  });
 }
 
 function selectBin(id) {
@@ -466,6 +574,7 @@ function updateBin(id, o) {
 
 /** Clip-Daten eines Takes aus der Ablage. */
 function takeClip(b, at, track) {
+  if (b.snip) return { track, type: 'snip', at, len: b.snip.e - b.snip.s, src: b.snip.s, label: b.text, speed: 1, gain: 1 };
   return { track, type: 'take', at, len: b.audio.length / SR, src: 0, label: b.text, speed: 1, gain: 1,
     take: { text: b.text, audio: b.audio, words: b.words, pieces: b.pieces, speaker: b.speaker, force: b.force, rev: 0 } };
 }
@@ -663,7 +772,7 @@ function inspect(sel) {
     const on = voiced.every(hasLips);
     btn(on ? 'Hide lips' : 'Show lips', () => lips(voiced, !on), 'film', 'L · Put the video of them saying each piece on the Lips track');
   }
-  if (voiced.length && voiced.some(x => clipText(x))) btn('Add to list', () => clipsToList(voiced).catch(err => fail(err.message)), 'list-plus', 'Put this into the list of sentences, to edit or reuse it');
+  if (voiced.length && voiced.some(x => clipText(x))) btn('Save in Gold', () => clipsToList(voiced).then(pulseGold).catch(err => fail(err.message)), 'star', 'Keep this in the Gold list, to edit or reuse it');
   if (voiced.length && voiced.some(x => clipText(x))) btn('AI rewrite', () => aiRewrite(voiced), 'sparkles', 'Let a language model turn this into YTP versions (needs your OpenRouter key under Ideas)');
   if (!many && c.type === 'snip') {
     const row = document.createElement('div');
@@ -689,6 +798,22 @@ function inspect(sel) {
   box.append(acts);
   const found = aiFor(sel);
   if (found) box.append(found.el);
+}
+
+// ---------------------------------------------------------------- KI: Warten und Streamen
+/** Statuszeile, solange das Modell nachdenkt (mit Sekunden), danach was gerade geschieht. */
+function modelStatus(say) {
+  const t0 = Date.now();
+  let phase = 'thinking';
+  const tick = () => { if (phase === 'thinking') say(`The model is thinking… ${Math.round((Date.now() - t0) / 1000)} s`); };
+  const timer = setInterval(tick, 1000);
+  tick();
+  return { phase: p => { phase = p; if (p === 'writing') say('Results are coming in…'); else tick(); }, stop: () => clearInterval(timer) };
+}
+/** Arbeitet Aufgaben nacheinander ab (Schneiden im Worker), während der Stream weiterläuft. */
+function queue() {
+  let chain = Promise.resolve();
+  return { add: fn => { chain = chain.then(fn).catch(() => {}); }, done: () => chain };
 }
 
 // ---------------------------------------------------------------- KI: Stelle umschreiben
@@ -739,47 +864,66 @@ async function aiRewrite(cs) {
   if (aiResults.length > 20) aiResults.shift();
   inspect(S.tl.selection());
   const say = t => { busy.querySelector('.sc-busy-text').textContent = t; };
+  const list = document.createElement('ol');
+  list.className = 'sc-ai-list';
+  busy.before(list);
+  const st = modelStatus(say), q = queue();
+  const pick = streamPick(5, ({ text, r }) => list.append(aiVersion(entry, list, { text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force, ai: true, id: newId() })));
   try {
     const ws = S.words.filter(w => spk == null || w.spk === spk);
-    const { lines } = await rewriteIdeas({ key, model, words: ws, lang: S.lang, line });
-    if (!lines.length) throw new Error('The model sent no usable versions. Try again.');
-    const scored = [];
-    for (const [i, text] of lines.entries()) {
-      say(`Cutting version ${i + 1} of ${lines.length}…`);
-      try { const r = await request({ type: 'mix', text, speaker: spk }); scored.push({ text, r, cost: buildCost(r.words) }); } catch { /* nächste */ }
-    }
-    const best = pickIdeas(scored, 5);
-    const list = document.createElement('ol');
-    list.className = 'sc-ai-list';
-    for (const { text, r } of best) {
-      const b = { text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force };
-      const li = document.createElement('li');
-      li.draggable = true;
-      li.title = 'Drag onto a track to add it anywhere';
-      li.addEventListener('dragstart', ev => {
-        dragging = { clip: takeClip(b, 0, 'a1') };
-        ev.dataTransfer.setData('text/plain', text);
-        ev.dataTransfer.effectAllowed = 'copy';
-      });
-      li.addEventListener('dragend', () => { dragging = null; S.tl.ghost(null); });
-      const play = document.createElement('button');
-      play.type = 'button'; play.className = 'sc-mini'; play.setAttribute('aria-label', 'Listen'); play.title = 'Listen';
-      play.append(icon('play', { size: '13px' }));
-      play.addEventListener('click', () => S.player.listen(r.audio));
-      const t = document.createElement('span');
-      t.textContent = text;
-      const use = document.createElement('button');
-      use.type = 'button'; use.className = 'sc-act sc-ai-use'; use.textContent = 'Use';
-      use.title = 'Replace the selected clips with this version (the other versions stay here)';
-      use.addEventListener('click', () => { useRewrite(entry, b); for (const x of list.children) x.classList.toggle('on', x === li); });
-      li.append(play, t, use);
-      list.append(li);
-    }
-    busy.replaceWith(list);
+    let n = 0;
+    await rewriteIdeas({ key, model, words: ws, lang: S.lang, line, onPhase: st.phase,
+      onLine: text => q.add(async () => {
+        n++;
+        const r = await request({ type: 'mix', text, speaker: spk });
+        pick.offer({ text, r, cost: buildCost(r.words) });
+        say(`${pick.count} versions so far – cutting more…`);
+      }) });
+    st.phase('writing');
+    await q.done();
+    if (!pick.finish()) throw new Error(n ? 'None of the versions could be cut cleanly. Try again.' : 'The model sent no usable versions. Try again.');
+    busy.remove();
   } catch (err) {
     busy.className = 'sc-note';
     busy.textContent = err.message;
-  }
+  } finally { st.stop(); }
+}
+
+/** Eine Fassung in der Umschreib-Liste: anhören, Wörter ziehen, ☆, „Use“. */
+function aiVersion(entry, list, b) {
+  const li = document.createElement('li');
+  li.draggable = true;
+  li.title = 'Drag onto a track (or onto Gold) to add it anywhere · drag a single word to use it alone';
+  li.addEventListener('dragstart', ev => {
+    dragging = { clip: takeClip(b, 0, 'a1'), item: b };
+    ev.dataTransfer.setData('text/plain', b.text);
+    ev.dataTransfer.effectAllowed = 'copy';
+  });
+  li.addEventListener('dragend', () => { dragging = null; S.tl.ghost(null); });
+  const play = document.createElement('button');
+  play.type = 'button'; play.className = 'sc-mini'; play.setAttribute('aria-label', 'Listen'); play.title = 'Listen';
+  play.append(icon('play', { size: '13px' }));
+  play.addEventListener('click', () => S.player.listen(b.audio));
+  const t = document.createElement('span');
+  t.className = 'sc-ai-text';
+  b.words.forEach((w, wi) => {
+    const x = document.createElement('span');
+    x.className = `sc-ai-word q ${w.quality}`;
+    x.textContent = w.w;
+    x.title = 'Drag this word onto a track or onto Gold · right-click for more';
+    wordHandle(x, b, wi);
+    t.append(x, ' ');
+  });
+  const star = document.createElement('button');
+  star.type = 'button'; star.className = 'sc-mini sc-add sc-star' + (inGold(b) ? ' on' : ''); star.title = 'Save in Gold';
+  star.append(icon('star', { size: '14px' }));
+  star.addEventListener('click', () => { saveGold(b); star.classList.add('on'); });
+  const use = document.createElement('button');
+  use.type = 'button'; use.className = 'sc-act sc-ai-use'; use.textContent = 'Use';
+  use.title = 'Replace the selected clips with this version (the other versions stay here)';
+  use.addEventListener('click', () => { useRewrite(entry, b); for (const x of list.children) x.classList.toggle('on', x === li); });
+  li.append(play, t, star, use);
+  return li;
 }
 
 /** Die gewählten Clips durch eine Fassung ersetzen (an der Stelle des ersten, auf seiner Spur). */
@@ -995,6 +1139,7 @@ function altText(o, si, sylNames) {
     const feel = f ? (how.length ? `${how.join(', ')} than the words around it` : 'matches the words around it') : 'the whole word from the video';
     return { name: `${use}“${i.word}”`, detail: `${feel}${time}`, context: i.context, best: o.best };
   }
+  if (i.kind === 'stem' && i.swap) return { name: `${use}“${i.word}” with ${i.swap}`, detail: `the word “${i.word}” from the video, one sound swapped${time}`, context: i.context, best: o.best };
   if (i.kind === 'stem') {
     const added = [i.before, i.after].filter(Boolean).map(x => `“${x}”`).join(' and ');
     return { name: `${use}${[i.before, `“${i.word}”`, i.after].filter(Boolean).join(' + ')}`,
@@ -1075,11 +1220,15 @@ els.find.addEventListener('input', () => {
       add.type = 'button'; add.className = 'sc-mini sc-add'; add.title = 'Place at the playhead';
       add.append(icon('plus', { size: '14px' }));
       add.addEventListener('click', () => { const c = insertSnip({ label: x.label, s: x.s, e: x.e }); S.player.play(c.at, { until: endOf(c) }); });
-      li.append(play, label, t, add);
+      const star = document.createElement('button');
+      star.type = 'button'; star.className = 'sc-mini sc-add sc-star'; star.title = 'Save in Gold';
+      star.append(icon('star', { size: '14px' }));
+      star.addEventListener('click', () => { saveGold(snipItem(x)); star.classList.add('on'); });
+      li.append(play, label, t, star, add);
       li.draggable = true;
       li.title = 'Drag onto a track';
       li.addEventListener('dragstart', ev => {
-        dragging = { clip: { track: 'a1', type: 'snip', at: 0, len: x.e - x.s, src: x.s, label: x.label, speed: 1, gain: 1 } };
+        dragging = { clip: { track: 'a1', type: 'snip', at: 0, len: x.e - x.s, src: x.s, label: x.label, speed: 1, gain: 1 }, item: snipItem(x) };
         ev.dataTransfer.setData('text/plain', x.label);
         ev.dataTransfer.effectAllowed = 'copy';
       });
@@ -1222,7 +1371,7 @@ function contextMenu({ x, y, t, onClip, onRuler }) {
       ['Split at playhead', 'S', 'split'], ['Crossfade with neighbours', 'X', 'xfade'], ['Backwards', 'R', 'reverse'],
       [S.tl.selection().every(x => S.tl.kindOf(x) === 'video') ? (S.tl.selection().every(x => x.muted) ? 'Show' : 'Hide') : (S.tl.selection().every(x => x.muted) ? 'Unmute' : 'Mute'), 'M', 'mute'], null);
     const voiced = S.tl.selection().filter(isVoiced);
-    if (voiced.length) items.push([voiced.every(hasLips) ? 'Hide lips' : 'Show lips', 'L', 'lips'], ...(voiced.some(clipText) ? [['Add to list', '', () => clipsToList(voiced)], ['AI rewrite…', '', () => aiRewrite(voiced)]] : []), null);
+    if (voiced.length) items.push([voiced.every(hasLips) ? 'Hide lips' : 'Show lips', 'L', 'lips'], ...(voiced.some(clipText) ? [['Save in Gold', '', () => clipsToList(voiced)], ['AI rewrite…', '', () => aiRewrite(voiced)]] : []), null);
     items.push(['Range around selection', '', 'rangeFromSelection'], null);
     items.push(['Delete', 'Del', 'del'], ['Delete and close gap', 'Shift+Del', () => tools.del(true)]);
   } else {
@@ -1358,30 +1507,31 @@ function selectTranscript(a, b = a) {
   const mk = (label, ic, fn) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'sc-act'; x.append(icon(ic, { size: '14px' }), ' ', label); x.addEventListener('click', fn); bar.append(x); };
   const w0 = S.words[idx[0]], w1 = S.words[idx.at(-1)];
   mk('Listen', 'play', () => S.player.listen(S.voice, w0.s - 0.03, w1.e + 0.05));
-  mk('Add to list', 'list-plus', () => addPassage(idx).then(() => selectTranscript(null)).catch(err => fail(err.message)));
+  mk('Save in Gold', 'star', () => { showBinTab('gold'); addPassage(idx, { gold: true }).then(() => { selectTranscript(null); pulseGold(); }).catch(err => fail(err.message)); });
   mk('Place at playhead', 'plus', () => insertSnip({ label: text.length > 40 ? text.slice(0, 38) + '…' : text, s: w0.s - 0.03, e: w1.e + 0.05 }));
 }
 
 /** Eine Stelle des Originals (Wortindizes) als Satz in die Liste – klingt genau wie im Video. */
-async function addPassage(idx, extra = {}) {
+async function addPassage(idx, extra = {}, at = 0) {
   const spk = S.speakers.length > 1 ? S.words[idx[0]].spk : null;
   const r = await request({ type: 'phrase', si: idx, speaker: spk });
-  const b = { id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, text: r.text, audio: r.audio, words: r.words,
+  const b = { id: newId(), text: r.text, audio: r.audio, words: r.words,
     pieces: r.pieces, speaker: r.speaker, force: r.force, rev: 0, orig: true, ...extra };
-  S.bin.unshift(b);
+  S.bin.splice(Math.min(at, S.bin.length), 0, b);
   renderBin(); save();
   return b;
 }
 
 /** Gewählte Ton-Clips in die Liste: Sätze als Kopie, Originalstimme als Stelle. */
 async function clipsToList(cs) {
+  showBinTab('gold');
   for (const c of [...cs].sort((a, b) => b.at - a.at)) {
     if (c.type === 'take') {
       const t = c.take;
-      S.bin.unshift({ id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, text: t.text, audio: t.audio, words: t.words, pieces: t.pieces, speaker: t.speaker, force: t.force, rev: 0 });
+      S.bin.unshift({ id: newId(), text: t.text, audio: t.audio, words: t.words, pieces: t.pieces, speaker: t.speaker, force: t.force, rev: 0, gold: true });
     } else {
       const idx = clipWords(c);
-      if (idx.length) await addPassage(idx);
+      if (idx.length) await addPassage(idx, { gold: true });
     }
   }
   renderBin(); save();
@@ -1397,38 +1547,41 @@ async function findGoldUI(topic = '') {
   if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; ideas.key.focus(); return; }
   store.set('slinky-openrouter-key', key); store.set('slinky-openrouter-model', model);
   findsGo.disabled = true; ideas.go.disabled = true; findsGo.classList.add('busy'); ideas.status.classList.add('sc-busy-text');
-  ideas.status.textContent = 'Reading everything they say…';
   const spk = speaker();
   const pos = S.words.map((w, i) => i).filter(i => spk == null || S.words[i].spk === spk);
-  const { finds } = await findGold({ key, model, words: pos.map(i => S.words[i]), lang: S.lang, topic });
-  if (!finds.length) throw new Error('The model found nothing usable. Try again.');
-  const scored = [];
-  for (const [n, f] of finds.entries()) {
-    ideas.status.textContent = `Cutting find ${n + 1} of ${finds.length}…`;
-    const idx = f.idx.map(k => pos[k]);
-    try {
-      if (!f.edit) { scored.push({ f, idx, cost: 0 }); continue; }
-      // Bearbeitung: Was aus dem Zitat bleibt, bleibt genau dieses Vorkommen (mit seinen Pausen)
-      const ew = f.edit.split(/\s+/).filter(Boolean);
-      const kept = keptWords(idx.map(i => S.words[i].w), ew);
-      const words = {}, pauses = {};
-      for (const [j, k] of kept) {
-        words[j] = idx[k];
-        const nk = kept.get(j + 1);
-        if (nk === k + 1) { const a = S.words[idx[k]], b = S.words[idx[k + 1]]; if (b.s - a.e > 0.08) pauses[j] = Math.min(1.5, b.s - a.e); }
-      }
-      const r = await request({ type: 'mix', text: f.edit, speaker: spk, force: { words, pins: {}, avoid: {}, pauses } });
-      scored.push({ f, idx, r, cost: buildCost(r.words) });
-    } catch { /* nächste */ }
-  }
-  const best = pickIdeas(scored, 8);
-  for (const { f, idx, r } of best.reverse()) {
+  showBinTab('gold');
+  let at = 0, n = 0;
+  const pick = streamPick(8, ({ f, idx, r }) => {
     const note = `${f.why ? f.why + ' · ' : ''}Original: “${f.quote}”`;
-    if (r) S.bin.unshift({ id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, text: f.edit, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force, rev: 0, ai: true, note });
-    else await addPassage(idx, { note: f.why ? `${f.why} · as they say it` : '' });
-  }
-  renderBin(); save();
-  ideas.status.textContent = `Added ${best.length} finds to the list – originals are marked “Orig”, small edits “AI”. Hover one to see why.`;
+    if (r) { S.bin.splice(at++, 0, { id: newId(), text: f.edit, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force, rev: 0, ai: true, gold: true, note }); renderBin(); save(); }
+    else addPassage(idx, { note: f.why ? `${f.why} · as they say it` : '', gold: true }, at++);
+  });
+  const st = modelStatus(t => { ideas.status.textContent = t; }), q = queue();
+  try {
+    await findGold({ key, model, words: pos.map(i => S.words[i]), lang: S.lang, topic, onPhase: st.phase,
+      onFind: f => q.add(async () => {
+        n++;
+        const idx = f.idx.map(k => pos[k]);
+        if (!f.edit) { pick.offer({ f, idx, cost: 0 }); return; }
+        // Bearbeitung: Was aus dem Zitat bleibt, bleibt genau dieses Vorkommen (mit seinen Pausen)
+        const ew = f.edit.split(/\s+/).filter(Boolean);
+        const kept = keptWords(idx.map(i => S.words[i].w), ew);
+        const words = {}, pauses = {};
+        for (const [j, k] of kept) {
+          words[j] = idx[k];
+          const nk = kept.get(j + 1);
+          if (nk === k + 1) { const a = S.words[idx[k]], b = S.words[idx[k + 1]]; if (b.s - a.e > 0.08) pauses[j] = Math.min(1.5, b.s - a.e); }
+        }
+        const r = await request({ type: 'mix', text: f.edit, speaker: spk, force: { words, pins: {}, avoid: {}, pauses } });
+        pick.offer({ f, idx, r, cost: buildCost(r.words) });
+        ideas.status.textContent = `${pick.count} finds in Gold so far – cutting more…`;
+      }) });
+    st.phase('writing');
+    await q.done();
+  } finally { st.stop(); }
+  const got = pick.finish();
+  if (!n) throw new Error('The model found nothing usable. Try again.');
+  ideas.status.textContent = `Added ${got} finds to Gold – originals are marked “Orig”, small edits “AI”. Hover one to see why.`;
   idleFinds();
 }
 
@@ -1611,7 +1764,7 @@ async function openProject(f) {
     tl.commit();
     const p = migrate(h.project);
     tl.tracks = p.tracks; tl.clips = p.clips; reserveIds(p.clips);
-    S.bin = h.project.bin ?? []; renderBin();
+    S.bin = h.project.bin ?? []; S.binTab = 'cut'; renderBin();
     tl.build();
     if (h.project.range) tl.setRange(h.project.range.a, h.project.range.b); else tl.setRange(null, null);
     tl.changed();
@@ -1688,26 +1841,33 @@ async function getIdeas({ topic = '', count = 16, keep = 5 } = {}) {
   ideas.go.disabled = true; findsGo.disabled = true; ideas.go.classList.add('busy'); ideas.status.classList.add('sc-busy-text');
   const spk = speaker();
   const ws = S.words.filter(w => spk == null || w.spk === spk);
-  // Höchstens zwei gebaute Wörter pro Zeile; ob sie verständlich sind, zeigt der Schnitt
-  const { lines } = await generateIdeas({ key, model, words: ws, lang: S.lang, topic, count, onStatus: m => { ideas.status.textContent = m; } });
-  if (!lines.length) throw new Error('The model sent no usable lines. Try again.');
-  // Schneiden und bewerten: ganze Wörter zählen voll, Silben halb, einzelne Laute kaum
-  const scored = [];
-  for (const [i, text] of lines.entries()) {
-    ideas.status.textContent = `Cutting idea ${i + 1} of ${lines.length}…`;
-    let r;
-    try { r = await request({ type: 'mix', text, speaker: spk }); } catch { continue; }   // eine kaputte Zeile kostet nicht alle
-    scored.push({ text, r, cost: buildCost(r.words) });
-  }
-  const best = pickIdeas(scored, keep);
-  for (const { text, r } of best.reverse()) {
-    S.bin.unshift({ id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force, rev: 0, ai: true });
-  }
-  renderBin();
-  save();
-  ideas.status.textContent = `Added ${best.length} of ${lines.length} ideas – the funniest that cut cleanly.`;
+  // Jede Zeile wird geschnitten, sobald sie ankommt; was verständlich bleibt, kommt sofort
+  // in die Liste (in der Reihenfolge des Modells: lustigste zuerst)
+  showBinTab('cut');
+  let at = 0, n = 0;
+  const added = [];
+  const pick = streamPick(keep, ({ text, r }) => {
+    const b = { id: newId(), text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force, rev: 0, ai: true };
+    S.bin.splice(at++, 0, b); added.push(text);
+    renderBin(); save();
+  });
+  const st = modelStatus(t => { ideas.status.textContent = t; }), q = queue();
+  try {
+    await generateIdeas({ key, model, words: ws, lang: S.lang, topic, count, onStatus: m => { ideas.status.textContent = m; }, onPhase: st.phase,
+      onLine: text => q.add(async () => {
+        n++;
+        const r = await request({ type: 'mix', text, speaker: spk });
+        pick.offer({ text, r, cost: buildCost(r.words) });
+        ideas.status.textContent = `${pick.count} ideas added so far – cutting more…`;
+      }) });
+    st.phase('writing');
+    await q.done();
+  } finally { st.stop(); }
+  pick.finish();
+  if (!n) throw new Error('The model sent no usable lines. Try again.');
+  ideas.status.textContent = `Added ${added.length} of ${n} ideas – the funniest that cut cleanly.`;
   idle();
-  return best.map(x => x.text);
+  return added;
 }
 
 // ---------------------------------------------------------------- Schnittstelle für Agenten
@@ -1721,7 +1881,7 @@ window.slinkyCut = {
   async cut(text, { speaker: spk = speaker() } = {}) {
     const r = await request({ type: 'mix', text, speaker: spk });
     const b = { id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, text, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force, rev: 0 };
-    S.bin.unshift(b); renderBin(); save();
+    S.bin.unshift(b); S.binTab = 'cut'; renderBin(); save();
     return { id: b.id, words: b.words.map(w => ({ w: w.w, quality: w.quality })) };
   },
   /** Alternativen für Wort wi (si = Silbe, -1 = ganzes Wort). → [{index, label, quality, current}] */

@@ -69,7 +69,7 @@ self.onmessage = async ({ data: m }) => {
 
 // Ändert sich das Verorten (Lexikon, Grenzen), wird es aus den gespeicherten
 // Modell-Ergebnissen neu gerechnet – ohne die langsamen Stufen zu wiederholen.
-const ALIGN_VERSION = 5;   // 3: Lexikon wählt die Standardform (wir → [viːɐ̯], nicht [mɐ]); 4: Zahlen werden ausgesprochen; 5: Längen aus dem Wörterbuch, Vokal-Vokal-Grenzen
+const ALIGN_VERSION = 6;   // 6: trennbare Vorsilben (an|ge|fasst); 3: Lexikon wählt die Standardform (wir → [viːɐ̯], nicht [mɐ]); 4: Zahlen werden ausgesprochen; 5: Längen aus dem Wörterbuch, Vokal-Vokal-Grenzen
 
 const MUSIC_CLEAN = 2;      // Fassung der Stimmrest-Filterung der Musik
 const lexicon = lang => fetch(`/data/slinky/lex-${lang}.txt?v=${ALIGN_VERSION}`).then(r => r.text()).then(parseLexicon);
@@ -384,23 +384,50 @@ function stems(tgt, wi, speaker, perWord = 1) {
   src.words.forEach(sw => {
     if (sw.ps < 0 || (only && !only(src.phones[sw.ps]))) return;
     const L = sw.pe - sw.ps + 1;
-    if (L < 4 || L < n / 2 || L >= n) return;                 // kurze Wörter („ist“ in „frisst“) zählen nicht
+    if (L < 4 || L < n / 2 || L > n) return;                  // kurze Wörter („ist“ in „frisst“) zählen nicht
     const ps = src.phones.slice(sw.ps, sw.pe + 1);
     if (ps.some(p => p.e - p.s < 0.012)) return;
+    const word = sw.w.replace(/[^\p{L}\p{N}'-]/gu, ''), wk = word.toLowerCase();
+    if (wk === key) return;
+    const conf = ps.reduce((x, p) => x + p.lp, 0) / L;
+    // je Wort und Art (enthalten / ein Laut / eine Silbe anders) die sicherste Stelle
+    const push = x => { const k = wk + (x.swap ?? ''); (best.get(k) ?? best.set(k, []).get(k)).push({ word, conf, at: sw.as ?? sw.s, ...x }); };
+    // Minimalpaar: gleich lang, genau ein Laut anders („angepasst“ → „angefasst“) –
+    // alles außer diesem Laut kommt aus dem Wort, nur er wird ersetzt
+    if (L === n) {
+      const diff = ps.map((p, k) => (same(p, T[k][0]) ? -1 : k)).filter(k => k >= 0);
+      if (diff.length !== 1) return;
+      const k = diff[0], sw8 = swapText(wk, key) ?? `${ps[k].real} → ${T[k][0].t}`;
+      push({ L: n - 1, near: true, swap: sw8, before: '', after: '', map: ps.map((p, j) => [T[j][1], p.i]).filter((_, j) => j !== k) });
+      // … oder die ganze Silbe mit dem anderen Laut neu („ange“ + „fasst“ aus „erfasst“)
+      const sb = syllableBounds(tgt.phones), ti = T[k][1];
+      let a = ti, b = ti + 1;
+      while (a > T[0][1] && !sb.has(a)) a--;
+      while (b <= T[n - 1][1] && !sb.has(b)) b++;
+      if (b - a > 1) push({ L: n - (b - a), near: true, swap: `${sw8} (whole syllable)`, before: '', after: '',
+        map: ps.map((p, j) => [T[j][1], p.i]).filter(([t]) => t < a || t >= b) });
+      return;
+    }
     let off = -1;
     for (let o = 0; o + L <= n && off < 0; o++) if (ps.every((p, k) => same(p, T[o + k][0]))) off = o;
     if (off < 0) return;
-    const word = sw.w.replace(/[^\p{L}\p{N}'-]/gu, ''), wk = word.toLowerCase();
     // Buchstaben davor/danach, wenn die Schreibung passt, sonst die Laute
     const at = key.indexOf(wk);
     const before = at >= 0 ? key.slice(0, at) : T.slice(0, off).map(([t]) => t.t).join('');
     const after = at >= 0 ? key.slice(at + wk.length) : T.slice(off + L).map(([t]) => t.t).join('');
-    const conf = ps.reduce((x, p) => x + p.lp, 0) / L;
-    const list = best.get(wk) ?? best.set(wk, []).get(wk);
-    list.push({ word, before, after, L, conf, at: sw.as ?? sw.s, map: ps.map((p, k) => [T[off + k][1], p.i]) });
+    push({ before, after, L, map: ps.map((p, k) => [T[off + k][1], p.i]) });
   });
   return [...best.values()].flatMap(l => l.sort((x, y) => y.conf - x.conf).slice(0, perWord))
     .sort((x, y) => y.L - x.L || y.conf - x.conf).slice(0, 3 * perWord);
+}
+
+/** Unterschied zweier gleich langer Schreibungen als „p → f“ (nur ein zusammenhängendes Stück). */
+function swapText(a, b) {
+  let i = 0, j = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j++;
+  const x = a.slice(i, a.length - j), y = b.slice(i, b.length - j);
+  return x.length <= 3 && y.length <= 3 && (x || y) ? `${x || '–'} → ${y || '–'}` : null;
 }
 
 /** Die Wörter um ein Stück Quelle herum (zwei davor, zwei danach), zum Wiedererkennen. */
@@ -440,7 +467,7 @@ function variants({ id, text, speaker, force = {}, wi }) {
   // Steckt ein ganzes Wort aus dem Video darin (Vorgabe bei neuen Wörtern), so heißt es auch so
   const stemNow = cur.quality === 'whole' ? null : stems(base.tgt, wi, speaker, 3).find(st => st.map.every(([, pi]) => cur.used.includes(pi)));
   const curInfo = cur.quality === 'whole' ? { kind: 'whole', word: cur.spanned.join(' '), at: cur.at, context: contextOf(cur.used) }
-    : stemNow ? { kind: 'stem', word: stemNow.word, before: stemNow.before, after: stemNow.after, at: stemNow.at, context: contextOf([stemNow.map[0][1]]) }
+    : stemNow ? { kind: 'stem', word: stemNow.word, before: stemNow.before, after: stemNow.after, swap: stemNow.swap, at: stemNow.at, context: contextOf([stemNow.map[0][1]]) }
     : { kind: 'mix', from: cur.from };
   push(option(text, speaker, F, wi, `Current: ${cur.quality === 'whole' ? `“${cur.spanned.join(' ')}” at ${clock(cur.at)}` : `from ${cur.from.join(' + ')}`}`, 'current', seen, curSig,
     { info: curInfo }));
@@ -450,8 +477,8 @@ function variants({ id, text, speaker, force = {}, wi }) {
     const pins = { ...without.pins };
     st.map.forEach(([ti, pi]) => { pins[ti] = pi; });
     const o = option(text, speaker, { ...without, words: { ...without.words, [wi]: -1 }, pins }, wi,
-      [st.before, `“${st.word}”`, st.after].filter(Boolean).join(' + '), 'stem', seen, curSig,
-      { at: st.at, info: { kind: 'stem', word: st.word, before: st.before, after: st.after, at: st.at, context: contextOf([st.map[0][1]]) } });
+      st.swap ? `“${st.word}”, ${st.swap}` : [st.before, `“${st.word}”`, st.after].filter(Boolean).join(' + '), 'stem', seen, curSig,
+      { at: st.at, info: { kind: 'stem', word: st.word, before: st.before, after: st.after, swap: st.swap, at: st.at, context: contextOf([st.map[0][1]]) } });
     if (o) opts.push(o);
   }
   // 1. jedes Vorkommen des ganzen Worts (beim Sprecher), mit Zeitstempel und dem Satz drumherum;

@@ -86,6 +86,13 @@ function pronounceRaw(word, lang, lex) {
       const toks = parts.flatMap((p, i) => decode(lex.get(p)).map(x => ({ ...x, stress: i === 0 ? x.stress : x.stress ? 2 : 0 })));
       return { toks, source: 'compound' };
     }
+    // Trennbare (betonte) Vorsilbe + bekanntes Wort, auch Partizip: an|ge|fasst, auf|ge|fressen,
+    // an|zu|fassen. Ohne das las die Regel „angefasst“ als [aŋeːfast].
+    const sp = w.match(DE_SEP);
+    if (sp && w.length - sp[1].length >= 3 && lex.has(sp[1])) {
+      const r = pronounceRaw(w.slice(sp[1].length), lang, lex);
+      if (r.source !== 'rules') return { toks: [...decode(lex.get(sp[1])), ...r.toks.map(x => ({ ...x, stress: x.stress ? 2 : 0 }))], source: 'compound' };
+    }
     // Unbetonte Vorsilbe + bekanntes Wort: ge|fangen, ver|laufen, be|kommen
     const m = w.match(DE_PREFIX);
     if (m && w.length - m[1].length >= 3) {
@@ -139,6 +146,7 @@ function prefixed(w, lex) {
   return [...decode(DE_PREFIX_TOKS[m[1]]), ...parts.flatMap((p, i) => decode(lex.get(p)).map(x => ({ ...x, stress: i === 0 ? x.stress : x.stress ? 2 : 0 })))];
 }
 
+const DE_SEP = /^(zurück|zusammen|vorbei|herum|hinein|heraus|herein|hinaus|voran|weiter|durch|über|unter|fort|heim|nach|auf|aus|ein|mit|vor|weg|los|her|hin|dar|bei|an|ab|um|zu)/;
 const DE_PREFIX = /^(ge|be|ver|zer|ent|emp|er)(?=[^aeiouäöüy]|[aeiouäöü][^aeiouäöüy])/;
 const DE_PREFIX_TOKS = { ge: 'ɡ ə', be: 'b ə', ver: 'f ɛ ɾ', zer: 'ts ɛ ɾ', ent: 'ɛ n t', emp: 'ɛ m p', er: 'ɛ ɾ' };
 // „ge…“, das keine Vorsilbe ist: geben, gehen, gelb, Geld, gelten, gern, gestern, gegen …

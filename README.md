@@ -118,11 +118,19 @@ syllables. Every line is cut, and only the funniest whose built words still fit
 together (low join cost) are kept. “AI rewrite” on selected voice clips does the
 same for just that passage and replaces it with the version you pick. “Find gold” has the model read the whole transcript for
 passages that are funny as they are or with a tiny edit (stop early, swap a
-word); the edits keep the speaker's own words where they are unchanged. In
+word); the edits keep the speaker's own words where they are unchanged.
+A new word that differs from a spoken one by one sound (*angepasst* →
+*angefasst*) is offered in the word's alternatives as that word with one
+sound, or one syllable, swapped. In
 lines, “…” makes a dramatic pause (0.8 s) before the punchline.
 
-Good passages can be collected in the list: Shift-click a range in the
-transcript, or “Add to list” on clips. Lips skip pieces shorter than 0.25 s
+The list has two tabs: “Sentences” (everything cut, AI ideas) and “Gold”
+(what you keep). ☆ saves a sentence, an AI version or a search result there,
+and so does dragging it onto the Gold tab; single words can be dragged out of
+any sentence onto a track or onto Gold (right-click a word for more). “Find
+gold” results, passages Shift-clicked in the transcript and clips saved with
+“Save in Gold” go straight to Gold. Model answers are streamed: each line is
+cut as soon as it arrives. Lips skip pieces shorter than 0.25 s
 (the picture before keeps running), and any picture clip can be hidden (M).
 
 ### Scripting it

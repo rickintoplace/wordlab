@@ -13,7 +13,7 @@ What makes a good YTP line:
 - near-miss words: change or add one sound of a word the speaker says to get a ruder or sillier one ("hinten" → "Hintern", "Wurzeln" → "Wurst", "pan" → "pants"). The tool builds these well, because almost all of their sounds are already there. This is one of the best YTP tricks: use it in several lines.
 - real sentences: grammatical (articles, endings and word order right), so the listener understands the joke at once. Absurd content, correct form. A garbled word salad is not funny.
 - no stutter loops ("die die die") – they rarely work
-- timing: a dramatic pause before the punchline sells it. Write "…" where the speaker should stop for a moment before the last word or phrase ("Und dann kam die Beute … Scheiße."). The tool turns "…" into a real pause. Use it in a few lines, not in all.
+- timing: a dramatic pause before the punchline sells it. Write "…" where the speaker should stop for a moment before the last word or phrase ("Und dann kam die Beute … Scheiße."). The tool turns "…" into a real pause. Use it in at most two lines out of ten – most jokes work better without it.
 - contrast: a long, serious, complicated build-up followed by something very short and stupid
 Short and punchy beats long. Do not explain jokes. Every line must be different in structure and joke – not ten variations of one idea. Make at least half of them rude, gross or profane: YTP is not polite. Skip lines that are merely odd: if a line would not make a teenager laugh or groan, drop it.
 
@@ -74,20 +74,27 @@ Write ${count} new lines (same style, funniest first), mostly from the vocabular
  * fallen weg (sind es zu wenige, einmal nachfragen). Ob die gebauten Wörter
  * taugen, zeigt erst der Schnitt (buildCost). → { lines, dropped, cost }
  */
-export async function generateIdeas({ key, model = DEFAULT_MODEL, words, lang, topic = '', count = 16, want = 8, fetchFn = fetch, onStatus = () => {} }) {
+export async function generateIdeas({ key, model = DEFAULT_MODEL, words, lang, topic = '', count = 16, want = 8, fetchFn = fetch, onStatus = () => {}, onLine = null, onPhase }) {
   const messages = ideaMessages({ words, lang, topic, count });
   onStatus('Asking the model…');
-  let { content, usage } = await askOpenRouter({ key, model, messages, fetchFn });
-  let cost = usage?.cost ?? 0;
-  let { ok, dropped } = usableLines(parseLines(content, 40), words, 2);
-  const allDropped = [...dropped];
-  if (ok.length < want && dropped.length) {
+  const ok = [], allDropped = [];
+  // jede Zeile sofort prüfen und (gestreamt) weitergeben
+  const take = t => {
+    if (typeof t !== 'string' || !t.trim() || ok.includes(t.trim())) return;
+    const u = usableLines([t.trim()], words, 2);
+    if (u.ok.length) { ok.push(u.ok[0]); onLine?.(u.ok[0]); } else allDropped.push(...u.dropped);
+  };
+  const ask = async msgs => {
+    const r = await askOpenRouter({ key, model, messages: msgs, fetchFn, onItem: onLine ? take : null, onPhase });
+    if (!onLine) for (const t of parseLines(r.content, 40)) take(t);
+    return r;
+  };
+  const first = await ask(messages);
+  let cost = first.usage?.cost ?? 0;
+  if (ok.length < want && allDropped.length) {
     onStatus(`Only ${ok.length} ideas fit the vocabulary – asking for more…`);
-    const r = await askOpenRouter({ key, model, messages: repairMessages(messages, content, dropped, count), fetchFn });
+    const r = await ask(repairMessages(messages, first.content, allDropped, count));
     cost += r.usage?.cost ?? 0;
-    const more = usableLines(parseLines(r.content, 40), words, 2);
-    ok = [...new Set([...ok, ...more.ok])];
-    allDropped.push(...more.dropped);
   }
   return { lines: ok, dropped: allDropped, cost };
 }
@@ -109,17 +116,23 @@ ${vocab.join(', ')}` },
 }
 
 /** Umschreibungen holen (wie generateIdeas, mit Rückfrage bei zu vielen fremden Wörtern). */
-export async function rewriteIdeas({ key, model = DEFAULT_MODEL, words, lang, line, count = 10, want = 5, fetchFn = fetch }) {
+export async function rewriteIdeas({ key, model = DEFAULT_MODEL, words, lang, line, count = 10, want = 5, fetchFn = fetch, onLine = null, onPhase, effort = null }) {
   const messages = rewriteMessages({ words, lang, line, count });
-  const { content, usage } = await askOpenRouter({ key, model, messages, fetchFn });
-  let cost = usage?.cost ?? 0;
-  const same = t => t.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase() === line.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase();
-  let { ok, dropped } = usableLines(parseLines(content, 30).filter(t => !same(t)), words, 2);
-  if (ok.length < want && dropped.length) {
-    const r = await askOpenRouter({ key, model, messages: repairMessages(messages, content, dropped, count), fetchFn });
-    cost += r.usage?.cost ?? 0;
-    ok = [...new Set([...ok, ...usableLines(parseLines(r.content, 30).filter(t => !same(t)), words, 2).ok])];
-  }
+  const norm = t => t.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase();
+  const ok = [], dropped = [];
+  const take = t => {
+    if (typeof t !== 'string' || !t.trim() || norm(t) === norm(line) || ok.includes(t.trim())) return;
+    const u = usableLines([t.trim()], words, 2);
+    if (u.ok.length) { ok.push(u.ok[0]); onLine?.(u.ok[0]); } else dropped.push(...u.dropped);
+  };
+  const ask = async msgs => {
+    const r = await askOpenRouter({ key, model, messages: msgs, fetchFn, onItem: onLine ? take : null, onPhase, effort });
+    if (!onLine) for (const t of parseLines(r.content, 30)) take(t);
+    return r;
+  };
+  const first = await ask(messages);
+  let cost = first.usage?.cost ?? 0;
+  if (ok.length < want && dropped.length) cost += (await ask(repairMessages(messages, first.content, dropped, count))).usage?.cost ?? 0;
   return { lines: ok, cost };
 }
 
@@ -175,7 +188,7 @@ export function locateQuote(words, quote) {
  * Fundstücke holen: Stellen, die schon lustig sind oder mit kleinem Eingriff werden.
  * `words` = [{w, s, e, spk}] (ein Sprecher oder alle). → { finds: [{quote, edit, why, idx}], cost }
  */
-export async function findGold({ key, model = DEFAULT_MODEL, words, lang, topic = '', count = 12, fetchFn = fetch }) {
+export async function findGold({ key, model = DEFAULT_MODEL, words, lang, topic = '', count = 12, fetchFn = fetch, onFind = null, onPhase }) {
   const { text } = transcriptSentences(words);
   const language = lang === 'de' ? 'German' : 'English';
   const messages = [
@@ -186,19 +199,27 @@ Find ${count} passages. Reply as JSON: {"finds": [{"quote": "…", "edit": "…"
 Transcript:
 ${text}` },
   ];
-  const { content, usage } = await askOpenRouter({ key, model, messages, fetchFn });
-  let raw = [];
-  try { raw = JSON.parse(content.replace(/^```(?:json)?|```$/gm, '').trim()).finds ?? []; } catch { raw = []; }
   const finds = [];
-  for (const f of raw) {
-    if (!f || typeof f.quote !== 'string') continue;
+  let asked = 0;
+  const take = f => {
+    asked++;
+    if (!f || typeof f.quote !== 'string') return;
     const idx = locateQuote(words, f.quote);
-    if (!idx) continue;
+    if (!idx) return;
     const quote = idx.map(i => words[i].w).join(' ');
     const edit = typeof f.edit === 'string' && f.edit.trim() && f.edit.trim() !== f.quote.trim() ? f.edit.trim() : '';
-    if (!finds.some(x => x.quote === quote && x.edit === edit)) finds.push({ quote, edit, why: String(f.why ?? '').slice(0, 80), idx });
+    if (finds.some(x => x.quote === quote && x.edit === edit)) return;
+    const x = { quote, edit, why: String(f.why ?? '').slice(0, 80), idx };
+    finds.push(x);
+    onFind?.(x);
+  };
+  const { content, usage } = await askOpenRouter({ key, model, messages, fetchFn, onItem: onFind ? take : null, onPhase });
+  if (!onFind) {
+    let raw = [];
+    try { raw = JSON.parse(content.replace(/^```(?:json)?|```$/gm, '').trim()).finds ?? []; } catch { raw = []; }
+    for (const f of raw) take(f);
   }
-  return { finds, cost: usage?.cost ?? 0, asked: raw.length };
+  return { finds, cost: usage?.cost ?? 0, asked };
 }
 
 /**
@@ -260,14 +281,101 @@ export function pickIdeas(scored, keep = 5, max = MAX_BUILD_COST) {
   return [...good, ...rest.slice(0, keep - good.length)];
 }
 
-/** Eine Anfrage an OpenRouter; gibt Text und Kosten zurück. */
-export async function askOpenRouter({ key, model = DEFAULT_MODEL, messages, effort = null, fetchFn = fetch }) {
+/**
+ * pickIdeas für gestreamte Ergebnisse: Was verständlich bleibt, wird sofort angenommen
+ * (bis `keep`), der Rest wartet; finish() füllt mit den saubersten Übrigen auf.
+ */
+export function streamPick(keep, accept, max = MAX_BUILD_COST) {
+  const rest = [];
+  let n = 0;
+  return {
+    offer(x) { if (n < keep && x.cost <= max) { n++; accept(x); } else rest.push(x); },
+    finish() { for (const x of rest.sort((a, b) => a.cost - b.cost).slice(0, keep - n)) { n++; accept(x); } return n; },
+    get count() { return n; },
+  };
+}
+
+/**
+ * Liest die Elemente des ersten JSON-Arrays einer Antwort, sobald sie vollständig
+ * angekommen sind ({"lines": ["…", "…"]} → "…", "…"). push(text) → neue Elemente.
+ */
+export class ArrayItems {
+  constructor() { this.buf = ''; this.i = 0; this.inArr = false; this.depth = 0; this.str = false; this.esc = false; this.start = -1; }
+  push(text) {
+    this.buf += text;
+    const out = [];
+    for (; this.i < this.buf.length; this.i++) {
+      const c = this.buf[this.i];
+      if (this.str) {
+        if (this.esc) this.esc = false;
+        else if (c === '\\') this.esc = true;
+        else if (c === '"') { this.str = false; if (this.inArr && this.depth === 1) out.push(this.take()); }
+        continue;
+      }
+      if (c === '"') { this.str = true; if (this.inArr && this.depth === 1) this.start = this.i; continue; }
+      if (!this.inArr) { if (c === '[') { this.inArr = true; this.depth = 1; } continue; }
+      if (c === '{' || c === '[') { if (this.depth === 1) this.start = this.i; this.depth++; }
+      else if (c === '}' || c === ']') {
+        this.depth--;
+        if (this.depth === 1) out.push(this.take());
+        else if (this.depth === 0) this.inArr = false;
+      }
+    }
+    return out.filter(x => x !== undefined);
+  }
+  take() {
+    const raw = this.buf.slice(this.start, this.i + 1);
+    this.start = -1;
+    try { return JSON.parse(raw); } catch { return undefined; }
+  }
+}
+
+/**
+ * Eine Anfrage an OpenRouter; gibt Text und Kosten zurück. Mit `onItem` wird gestreamt:
+ * Jedes fertige Element des Antwort-Arrays kommt sofort an (Zeile bzw. Fundstück).
+ * `onPhase('thinking' | 'writing')` meldet, ob das Modell noch nachdenkt.
+ */
+export async function askOpenRouter({ key, model = DEFAULT_MODEL, messages, effort = null, fetchFn = fetch, onItem = null, onPhase = () => {}, signal }) {
+  const stream = !!onItem;
   const res = await fetchFn('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
+    signal,
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'Slinky-Cut' },
-    body: JSON.stringify({ model, messages, temperature: 1.0, response_format: { type: 'json_object' }, ...(effort ? { reasoning: { effort } } : {}) }),
+    body: JSON.stringify({ model, messages, temperature: 1.0, response_format: { type: 'json_object' }, ...(effort === 'none' ? { reasoning: { enabled: false } } : effort ? { reasoning: { effort } } : {}),
+      ...(stream ? { stream: true, usage: { include: true } } : {}) }),
   });
   if (!res.ok) { const t = await res.text(); throw new Error(`OpenRouter: ${res.status} ${t.slice(0, 160)}`); }
-  const j = await res.json();
-  return { content: j.choices?.[0]?.message?.content ?? '', usage: j.usage ?? null, model: j.model ?? model };
+  const items = new ArrayItems();
+  // Antwort kam doch am Stück (kein Stream): alle Elemente auf einmal melden
+  if (!stream || !/event-stream/.test(res.headers.get('content-type') ?? '') || !res.body) {
+    const j = await res.json();
+    const content = j.choices?.[0]?.message?.content ?? '';
+    if (stream) { onPhase('writing'); for (const x of items.push(content)) onItem(x); }
+    return { content, usage: j.usage ?? null, model: j.model ?? model };
+  }
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let content = '', usage = null, used = model, rest = '', phase = '';
+  const set = p => { if (p !== phase) { phase = p; onPhase(p); } };
+  set('thinking');
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    rest += dec.decode(value, { stream: true });
+    const lines = rest.split('\n');
+    rest = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data:')) continue;              // „: OPENROUTER PROCESSING“ u. Ä.
+      const data = line.slice(5).trim();
+      if (data === '[DONE]') continue;
+      let j;
+      try { j = JSON.parse(data); } catch { continue; }
+      if (j.error) throw new Error(`OpenRouter: ${j.error.message ?? 'error'}`);
+      if (j.usage) usage = j.usage;
+      if (j.model) used = j.model;
+      const d = j.choices?.[0]?.delta;
+      if (d?.content) { set('writing'); content += d.content; for (const x of items.push(d.content)) onItem(x); }
+      else if (d?.reasoning) set('thinking');
+    }
+  }
+  return { content, usage, model: used };
 }

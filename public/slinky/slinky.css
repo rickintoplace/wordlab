@@ -470,3 +470,25 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
   border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-size: .88rem; }
 .sc-tsel-text { flex: 1 1 16rem; font-style: italic; color: var(--muted); }
 .sc-tag-orig { background: var(--c-rime-1); }
+
+/* ------------------------------------------------------------------ Ablage: Sätze | Gold */
+.sc-bintabs { display: flex; gap: .25rem; margin-top: .7rem; border-bottom: 1px solid var(--line); }
+.sc-bintabs button { display: inline-flex; align-items: center; gap: .35rem; font: inherit; font-size: .85rem; font-weight: 600; color: var(--muted);
+  background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: .35rem .6rem; cursor: pointer; border-radius: 6px 6px 0 0; }
+.sc-bintabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--c-onset-1); }
+.sc-bintabs button span:empty { display: none; }
+.sc-bintabs button span:not(:empty) { font-size: .72rem; font-weight: 700; padding: 0 .35rem; border-radius: 999px; background: var(--card-bg); color: var(--muted); }
+.sc-bintabs [data-tab="gold"] .icon { color: var(--c-onset-1); fill: currentColor; }
+.sc-bintabs [data-tab="gold"].drop { background: color-mix(in oklab, var(--c-onset-1) 18%, transparent); color: var(--fg); }
+.sc-bintabs [data-tab="gold"].pulse { animation: sc-pulse .6s ease; }
+@keyframes sc-pulse { 40% { transform: scale(1.12); color: var(--c-onset-1); } }
+.sc-bintabs + .sc-bin { margin-top: .45rem; }
+.sc-bin > .sc-hint { font-size: .85rem; color: var(--muted); padding: .4rem .2rem; line-height: 1.45; }
+.sc-star.on { color: var(--c-onset-1); }
+.sc-star.on .icon { fill: currentColor; }
+.sc-chip[draggable="true"] { cursor: grab; }
+.sc-ai-list li { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.sc-ai-word { cursor: grab; border-radius: 4px; padding: 0 .1rem; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; text-decoration-color: var(--q-whole); }
+.sc-ai-word.syllables { text-decoration-color: var(--q-syllables); }
+.sc-ai-word.sounds { text-decoration-color: var(--q-sounds); text-decoration-style: wavy; }
+.sc-ai-word:hover { background: color-mix(in oklab, var(--fg) 9%, transparent); }
