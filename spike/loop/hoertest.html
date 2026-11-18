@@ -1,0 +1,219 @@
+<title>Slinky Hörtest</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Ein Arbeitsplatz für Blindvergleiche: eine Karte pro Satzpaar, darunter der Fortschritt als Spur aus Kästchen */
+:root {
+  --bg: #f3f4f7; --panel: #ffffff; --ink: #1c2130; --muted: #5d6578; --line: #d9dce5;
+  --a: #0f7c86; --b: #7a4bc4; --accent: #d97a1c; --ok: #2e8a4e;
+  --a-soft: color-mix(in oklab, var(--a) 12%, var(--panel)); --b-soft: color-mix(in oklab, var(--b) 12%, var(--panel));
+  --f-head: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, -apple-system, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  color-scheme: dark; --bg: #12151d; --panel: #1b1f2a; --ink: #e6e8ef; --muted: #9aa1b3; --line: #2e3443;
+  --a: #3fb8c2; --b: #a98be6; --accent: #f0a04b; --ok: #5cc47f;
+} }
+:root[data-theme="dark"] {
+  color-scheme: dark; --bg: #12151d; --panel: #1b1f2a; --ink: #e6e8ef; --muted: #9aa1b3; --line: #2e3443;
+  --a: #3fb8c2; --b: #a98be6; --accent: #f0a04b; --ok: #5cc47f;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 48px; }
+.wrap { max-width: 44rem; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { font: 600 1.5rem/1.2 var(--f-head); margin: 0; letter-spacing: -0.01em; }
+.round { display: flex; gap: 8px; align-items: center; color: var(--muted); }
+select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+.status { font: 500 0.8rem/1.4 var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.status.warn { color: var(--accent); }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px; display: grid; gap: 18px; }
+.meta { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font: 500 0.75rem/1 var(--f-mono); text-transform: uppercase; letter-spacing: 0.06em; }
+.sentence { font: 500 1.55rem/1.35 var(--f-head); margin: 0; text-wrap: balance; }
+.sentence mark { background: none; color: inherit; text-decoration: underline 3px var(--accent); text-underline-offset: 5px; }
+.players { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.play { font: 600 1.05rem var(--f-head); border-radius: 10px; padding: 16px 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; border: 2px solid transparent; }
+.play.a { background: var(--a-soft); color: var(--a); }
+.play.b { background: var(--b-soft); color: var(--b); }
+.play.a.on { border-color: var(--a); } .play.b.on { border-color: var(--b); }
+.play svg { width: 18px; height: 18px; fill: currentColor; }
+kbd { font: 500 0.72rem var(--f-mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; color: var(--muted); background: var(--bg); }
+.both { justify-self: center; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.both:hover { color: var(--ink); }
+
+.verdict { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; }
+.v { font: 600 0.95rem var(--f-body); border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 12px 10px; cursor: pointer; display: grid; gap: 4px; justify-items: center; }
+.v small { font-weight: 400; color: var(--muted); }
+.v:hover { border-color: var(--ink); }
+.v.sel.a { background: var(--a); border-color: var(--a); color: var(--panel); }
+.v.sel.b { background: var(--b); border-color: var(--b); color: var(--panel); }
+.v.sel.same { background: var(--ink); border-color: var(--ink); color: var(--panel); }
+.v.sel small { color: inherit; opacity: 0.8; }
+.tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag { font: 500 0.85rem var(--f-body); border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.tag[aria-pressed="true"] { border-color: var(--accent); color: var(--ink); background: color-mix(in oklab, var(--accent) 16%, var(--panel)); }
+.note { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; }
+.nav { display: flex; justify-content: space-between; gap: 10px; }
+.nav button { font: 500 0.9rem var(--f-body); background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+.nav button:disabled { opacity: 0.4; cursor: default; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.track { display: grid; gap: 8px; }
+.track h2 { font: 600 0.8rem var(--f-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0; }
+.cells { display: flex; flex-wrap: wrap; gap: 5px; }
+.cell { width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; padding: 0; }
+.cell.done { background: var(--ok); border-color: var(--ok); }
+.cell.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
+.keys { color: var(--muted); font-size: 0.85rem; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.done-msg { text-align: center; color: var(--muted); }
+.fallback { display: grid; gap: 6px; }
+.fallback textarea { width: 100%; min-height: 6rem; font: 0.8rem var(--f-mono); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+@media (max-width: 460px) { .verdict { grid-template-columns: 1fr 1fr; } .verdict .same { grid-column: span 2; grid-row: 2; } .sentence { font-size: 1.3rem; } }
+@media (prefers-reduced-motion: no-preference) { .play, .v, .tag { transition: background-color .12s, border-color .12s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Slinky Hörtest</h1>
+    <label class="round">Runde <select id="round"></select></label>
+  </header>
+  <div class="status" id="status">Verbinde mit dem Speicher …</div>
+
+  <section class="card" id="card" aria-live="polite">
+    <div class="meta"><span id="pos">Paar 1 von 1</span><span id="saved"></span></div>
+    <p class="sentence" id="sentence">Der Hase hat eine Nase.</p>
+    <div class="players">
+      <button class="play a" id="play-a"><svg viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></svg>A anhören <kbd>A</kbd></button>
+      <button class="play b" id="play-b"><svg viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></svg>B anhören <kbd>B</kbd></button>
+    </div>
+    <button class="both" id="play-both">A und dann B <kbd>Leertaste</kbd></button>
+    <div class="verdict">
+      <button class="v a" id="v-a" data-c="a">A klingt besser <small><kbd>←</kbd></small></button>
+      <button class="v same" id="v-same" data-c="same">gleich <small><kbd>↓</kbd></small></button>
+      <button class="v b" id="v-b" data-c="b">B klingt besser <small><kbd>→</kbd></small></button>
+    </div>
+    <div class="tags" id="tags" aria-label="Was stört (optional)"></div>
+    <input class="note" id="note" placeholder="Notiz (optional), z. B. „Hase“ klingt nach „Fase“">
+    <div class="nav"><button id="prev">← Zurück</button><button id="next">Überspringen →</button></div>
+  </section>
+
+  <section class="track">
+    <h2 id="track-h">Fortschritt</h2>
+    <div class="cells" id="cells"></div>
+  </section>
+  <div class="keys"><span><kbd>A</kbd> <kbd>B</kbd> abspielen</span><span><kbd>←</kbd> <kbd>↓</kbd> <kbd>→</kbd> urteilen und weiter</span><span><kbd>1</kbd>–<kbd>5</kbd> Stichworte</span></div>
+  <div class="fallback" id="fallback" hidden>
+    <span class="status warn">Ohne Speicher: Urteile bleiben nur in diesem Browser. Kopiere den Text und schick ihn mir.</span>
+    <textarea id="dump" readonly></textarea>
+  </div>
+</div>
+
+<script>
+const ROUNDS = /*ROUNDS*/[];
+const TAGS = ['Laut falsch', 'abgehackt', 'Betonung', 'Knackser', 'beide schlecht'];
+const $ = id => document.getElementById(id);
+const store = (() => { try { return window.localStorage; } catch { return null; } })();
+const local = (() => { try { return JSON.parse(store?.getItem('slinky-hoertest') ?? '{}'); } catch { return {}; } })();
+let votes = { ...local };           // docId -> {choice, tags, note}
+let db = null, round = ROUNDS.at(-1), idx = 0, playing = null;
+const audio = new Audio();
+const docId = it => `${round.id}~${it.id}`;
+
+function initRounds() {
+  for (const r of ROUNDS) { const o = document.createElement('option'); o.value = r.id; o.textContent = `${r.id} · ${r.title}`; $('round').append(o); }
+  $('round').value = round.id;
+  $('round').onchange = () => { round = ROUNDS.find(r => r.id === $('round').value); idx = firstOpen(); render(); };
+  for (const [k, t] of TAGS.entries()) { const b = document.createElement('button'); b.className = 'tag'; b.textContent = `${t}`; b.dataset.t = t; b.setAttribute('aria-pressed', 'false'); b.title = `Taste ${k + 1}`; b.onclick = () => toggleTag(t); $('tags').append(b); }
+}
+const firstOpen = () => { const i = round.items.findIndex(it => !votes[docId(it)]); return i < 0 ? 0 : i; };
+let draft = { tags: [], note: '' }, draftFor = null;
+
+function render() {
+  const items = round.items, it = items[idx];
+  $('pos').textContent = `Paar ${idx + 1} von ${items.length}`;
+  const v = votes[docId(it)];
+  // Entwurf nur beim Wechsel des Paars neu setzen (ein Snapshot darf laufende Eingaben nicht löschen)
+  if (draftFor !== docId(it)) { draftFor = docId(it); draft = { tags: [...(v?.tags ?? [])], note: v?.note ?? '' }; $('note').value = draft.note; }
+  $('saved').textContent = v ? 'beurteilt' : '';
+  const words = it.text.split(/\s+/);
+  $('sentence').replaceChildren(...words.flatMap((w, k) => { const n = it.focus.includes(k) ? Object.assign(document.createElement('mark'), { textContent: w }) : document.createTextNode(w); return k ? [document.createTextNode(' '), n] : [n]; }));
+  for (const b of document.querySelectorAll('.v')) b.classList.toggle('sel', v?.choice === b.dataset.c);
+  for (const b of document.querySelectorAll('.tag')) b.setAttribute('aria-pressed', String(draft.tags.includes(b.dataset.t)));
+  $('prev').disabled = idx === 0;
+  $('next').textContent = idx === items.length - 1 ? 'Fertig' : 'Überspringen →';
+  const done = items.filter(x => votes[docId(x)]).length;
+  $('track-h').textContent = `Fortschritt · ${done} von ${items.length} beurteilt`;
+  $('cells').replaceChildren(...items.map((x, k) => { const c = document.createElement('button'); c.className = 'cell' + (votes[docId(x)] ? ' done' : '') + (k === idx ? ' cur' : ''); c.title = x.text; c.setAttribute('aria-label', `Paar ${k + 1}: ${x.text}`); c.onclick = () => { idx = k; stop(); render(); }; return c; }));
+  // nächste Clips vorladen
+  for (const x of [items[idx + 1]].filter(Boolean)) { new Audio(x.a).preload = 'auto'; new Audio(x.b).preload = 'auto'; }
+  if (!db) $('dump').value = JSON.stringify(Object.fromEntries(Object.entries(votes).filter(([k]) => k.startsWith(round.id + '~'))));
+}
+
+function stop() { audio.pause(); playing = null; $('play-a').classList.remove('on'); $('play-b').classList.remove('on'); }
+function play(side, then) {
+  stop(); const it = round.items[idx];
+  audio.src = it[side]; playing = side; $(`play-${side}`).classList.add('on');
+  audio.onended = () => { $(`play-${side}`).classList.remove('on'); playing = null; then?.(); };
+  audio.play().catch(() => stop());
+}
+const playBoth = () => play('a', () => setTimeout(() => play('b'), 450));
+
+function toggleTag(t) { draft.tags = draft.tags.includes(t) ? draft.tags.filter(x => x !== t) : [...draft.tags, t]; render2(); }
+function render2() { for (const b of document.querySelectorAll('.tag')) b.setAttribute('aria-pressed', String(draft.tags.includes(b.dataset.t))); }
+
+async function judge(choice) {
+  const it = round.items[idx], id = docId(it);
+  const v = { round: round.id, item: it.id, choice, tags: draft.tags, note: $('note').value.trim(), at: new Date().toISOString() };
+  votes[id] = v;
+  try { store?.setItem('slinky-hoertest', JSON.stringify(votes)); } catch {}
+  stop();
+  if (idx < round.items.length - 1) idx++;
+  render();
+  if (db) {
+    try { await db.collection('votes').doc(id).set(v); setStatus(`Gespeichert: Paar „${it.text}“`); }
+    catch (e) { setStatus(`Nicht gespeichert (${e.code ?? 'Fehler'}). Das Urteil bleibt in diesem Browser.`, true); }
+  }
+}
+function setStatus(t, warn = false) { $('status').textContent = t; $('status').classList.toggle('warn', warn); }
+
+$('play-a').onclick = () => play('a');
+$('play-b').onclick = () => play('b');
+$('play-both').onclick = playBoth;
+for (const b of document.querySelectorAll('.v')) b.onclick = () => judge(b.dataset.c);
+$('prev').onclick = () => { if (idx > 0) { idx--; stop(); render(); } };
+$('next').onclick = () => { if (idx < round.items.length - 1) { idx++; stop(); render(); } };
+$('note').oninput = () => { draft.note = $('note').value; };
+document.addEventListener('keydown', e => {
+  if (e.target === $('note') || e.target.tagName === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  if (k === 'a' || k === 'A') play('a');
+  else if (k === 'b' || k === 'B') play('b');
+  else if (k === ' ') playBoth();
+  else if (k === 'ArrowLeft') judge('a');
+  else if (k === 'ArrowRight') judge('b');
+  else if (k === 'ArrowDown') judge('same');
+  else if (k >= '1' && k <= String(TAGS.length)) toggleTag(TAGS[+k - 1]);
+  else return;
+  e.preventDefault();
+});
+
+initRounds();
+idx = firstOpen();
+render();
+
+(async () => {
+  const timer = setTimeout(() => setStatus('Der Speicher antwortet noch nicht. Urteile bleiben vorerst in diesem Browser.', true), 10000);
+  db = await (window.claude?.use?.('db') ?? Promise.resolve(null));
+  if (!db) { clearTimeout(timer); setStatus('Kein Speicher in dieser Ansicht.', true); $('fallback').hidden = false; render(); return; }
+  db.collection('votes').onSnapshot(snap => {
+    clearTimeout(timer);
+    for (const d of snap.docs) votes[d.id] = d.data();
+    if (!snap.metadata.fromCache) setStatus('Urteile werden gespeichert und kommen direkt bei mir an.');
+    render();
+  }, e => { clearTimeout(timer); setStatus(`Speicher nicht erreichbar (${e.code}). Urteile bleiben in diesem Browser.`, true); $('fallback').hidden = false; db = null; render(); });
+})();
+</script>
