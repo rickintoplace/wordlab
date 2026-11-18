@@ -120,13 +120,21 @@ together (low join cost) are kept. “AI rewrite” on selected voice clips does
 same for just that passage and replaces it with the version you pick. “Find gold” has the model read the whole transcript for
 passages that are funny as they are or with a tiny edit (stop early, swap a
 word); the edits keep the speaker's own words where they are unchanged.
+“Write a story” plans a short YTP with one premise, a running gag and a punchline:
+the model first suggests a few ideas built from the footage (and from the Gold
+list), then writes the scenes of the one you pick – mostly original passages as
+setup and tiny edits of them, Gold clips where they fit, and few new lines, each
+naming the passage whose picture fits it. Scenes that do not cut cleanly are
+replaced once automatically; each scene can be moved, removed or rewritten, and
+“Place on the timeline” puts them all behind the end of the timeline with their
+picture and sets the export range to them.
 A new word that differs from a spoken one by one sound (*angepasst* →
 *angefasst*) is built from that word with one sound, or one syllable, swapped.
 A retyped word keeps as much of the old word at its place as fits
 (*Chameleons* → *Kamele* stays “Chamele…” from the same sentence).
 The model is picked from a short list of tested ones (Gemini 3.8 Flash by
 default) or typed in freely, with suggestions from OpenRouter's catalogue. In
-lines, “…” makes a dramatic pause (0.8 s) before the punchline.
+lines, “…” makes a dramatic pause (at least 0.8 s, also when written without spaces) before the punchline.
 
 The list has two tabs: “Sentences” (everything cut, AI ideas) and “Gold”
 (what you keep). ☆ saves a sentence, an AI version or a search result there,

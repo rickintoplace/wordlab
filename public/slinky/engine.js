@@ -292,7 +292,9 @@ export function targetPhones(text, lang, g2pLex, src = null, { inst = {}, pauses
     if (!known && lexicon && g2pLex) toks = speakerParts(key, toks, src, lang, g2pLex);
     // pauses[wi]: Pause nach dem Wort wie in der Quelle (beim Bearbeiten der Originalstimme)
     // „…“: Kunstpause (vor der Pointe) – deutlich länger als ein Satzende
-    const pause = pauses[wi] ?? (/(…|\.\.\.)$/.test(w) ? 0.8 : /[.!?]$/.test(w) ? 0.35 : /[,;:–—]$/.test(w) ? 0.15 : 0);
+    // (eine aus dem Original übernommene kurze Pause darf die Kunstpause nicht verkürzen)
+    const pause = /(…|\.\.\.)["“”»]*$/.test(w) ? Math.max(0.8, pauses[wi] ?? 0)
+      : pauses[wi] ?? (/[.!?]$/.test(w) ? 0.35 : /[,;:–—]$/.test(w) ? 0.15 : 0);
     let lastV = toks.length - 1;
     while (lastV > 0 && !isVowel(toks[lastV].t)) lastV--;
     toks.forEach((x, k) => out.push({ t: x.t, fin: k >= lastV, cls: soundClass(x.t), stress: x.stress, w: wi,
@@ -352,8 +354,12 @@ function speakerParts(key, toks, src, lang, g2pLex) {
 export function splitWords(text) {
   const out = [];
   for (const t of text.split(/\s+/).filter(Boolean)) {
-    if (/[\p{L}\p{N}]/u.test(t) || !out.length) out.push(t);
-    else out[out.length - 1] += t;
+    // „ist…Scheiße“ (ohne Leerzeichen): die Pause trennt zwei Wörter
+    const parts = t.split(/(?<=[\p{L}\p{N}](?:…|\.\.\.))(?=[\p{L}\p{N}])/u);
+    for (const x of parts) {
+      if (/[\p{L}\p{N}]/u.test(x) || !out.length) out.push(x);
+      else out[out.length - 1] += x;
+    }
   }
   if (out.length > 1 && !/[\p{L}\p{N}]/u.test(out[0])) out.splice(0, 2, out[0] + out[1]);
   return out;
