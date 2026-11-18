@@ -47,7 +47,7 @@ export const W = {
   codaPos: 1,            // Anteil von wpos, wenn beide im Silbenendrand stehen und sich nur Wortende/Wortinneres unterscheidet
   boundVowelOnly: 1,     // Grenztyp nur am Vokal der letzten Silbe prüfen
   vowelCtx: 2.5,
-  consVctx: 1,           // Konsonant neben anderem Vokal als im Ziel: Faktor auf die Kontextkosten
+  consVctx: 3,           // Konsonant neben anderem Vokal als im Ziel: Faktor auf die Kontextkosten
   lenSwap: 2.5,          // gleicher Vokal, andere Länge (o/oː); die Dauer bewertet durDev zusätzlich
   vowelSwap: 8,        // anderer Vokal derselben Klasse (ɔ statt oː, ɛ statt eː)
   home: 3.0,             // je Hälfte: Laut aus der Gegend des ersetzten Worts (beim Umschreiben)
