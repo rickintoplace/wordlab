@@ -1,0 +1,21 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import { parseLexicon } from '../public/slinky/g2p.js';
+import { buildSource, targetPhones, select, plan, render, encodeWav, wholeWords } from '../public/slinky/engine.js';
+import { loadScorer, hear, targetTokens, per } from './score.mjs';
+const [dir, lang, text] = process.argv.slice(2);
+const f32 = f => { const b = readFileSync(f); return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
+const lex = parseLexicon(readFileSync(new URL(`../public/data/slinky/lex-${lang}.txt`, import.meta.url), 'utf8'));
+const { words, phones } = JSON.parse(readFileSync(`${dir}/phones.json`));
+const src = buildSource({ lang, words, phones, a16: f32(`${dir}/a16.f32`), a48: f32(`${dir}/a48.f32`) });
+await loadScorer();
+const only = p => (src.words[p.w].spk ?? 0) === 0;
+const tgt = targetPhones(text, lang, lex, src);
+const { chosen } = select(src, tgt, 250, wholeWords(src, tgt, only).constrain, 'all', only);
+const segs = plan(src, tgt, chosen);
+const f = '/tmp/claude-1000/-home-rick-work-spoonerisms/7f7b31be-a256-44ac-870d-cf333e4745bb/scratchpad/one.wav';
+writeFileSync(f, Buffer.from(encodeWav(render(src, segs))));
+const h = await hear(f);
+console.log('Ziel (unser): ', tgt.phones.map(p => p.t).join(' '));
+console.log('Ziel (Richter):', targetTokens(text, lang).join(' '));
+console.log('gehört:       ', h.join(' '), ' PER', (100 * per(targetTokens(text, lang), h)).toFixed(0));
+for (const s of segs) { const ps = [...new Set(s.parts.map(st => chosen[st].p))]; console.log(`  ${ps.map(p => p.real).join('')} ← ${[...new Set(ps.map(p => src.words[p.w].w))].join(' ')} @${s.start.toFixed(2)}`); }

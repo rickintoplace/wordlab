@@ -9,7 +9,7 @@ import { endOf, speedOf, srcSpan, timeOf, toggleCrossfades, migrate, keptSpan } 
 import { Player } from './player.js';
 import * as cache from './cache.js';
 import { pack, unpack, estimateMB } from './projfile.js';
-import { DEFAULT_MODEL, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, streamPick } from './ideas.js';
+import { DEFAULT_MODEL, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, streamPick, vocabulary } from './ideas.js';
 
 paintIcons();
 const $ = id => document.getElementById(id);
@@ -872,7 +872,8 @@ async function aiRewrite(cs) {
   try {
     const ws = S.words.filter(w => spk == null || w.spk === spk);
     let n = 0;
-    await rewriteIdeas({ key, model, words: ws, lang: S.lang, line, onPhase: st.phase,
+    const { pron } = await request({ type: 'pron', words: vocabulary(ws) });
+    await rewriteIdeas({ key, model, words: ws, lang: S.lang, line, pron, onPhase: st.phase,
       onLine: text => q.add(async () => {
         n++;
         const r = await request({ type: 'mix', text, speaker: spk });
@@ -1483,10 +1484,30 @@ els.exportMenu.addEventListener('click', async e => {
     const { blob, ext } = await S.player.render(f => { btn.textContent = `Exporting ${Math.round(f * 100)} % · cancel`; }, exporting.signal,
       { ...span, watermark: $('export-mark').checked });
     download(blob, `${name}.${ext}`);
+    exportDone(blob, `${name}.${ext}`);
   } catch (err) { if (err.name !== 'AbortError') fail(err.message); } finally {
     exporting = null; btn.innerHTML = label; btn.title = ''; S.player.mark = null; S.player.sync(S.tl.playhead);
   }
 });
+
+/**
+ * Nach dem Ausgeben: Hinweis, wo die Datei ist, und Wege zum Veröffentlichen – „Teilen…“
+ * (wo das System Dateien teilen kann, z. B. an die YouTube-App) und YouTubes Upload-Seite.
+ */
+function exportDone(blob, name) {
+  const box = $('export-done');
+  const f = new File([blob], name, { type: blob.type });
+  box.innerHTML = `<span><b>${esc(name)}</b> is in your downloads.</span>`;
+  const act = (label, ic, fn, title = '') => { const b = document.createElement('button'); b.type = 'button'; b.className = 'sc-act'; b.title = title; b.append(icon(ic, { size: '14px' }), ' ', label); b.addEventListener('click', fn); box.append(b); return b; };
+  if (navigator.canShare?.({ files: [f] })) act('Share…', 'upload', () => navigator.share({ files: [f], title: name }).catch(() => {}), 'Send it to another app, e.g. YouTube');
+  const yt = document.createElement('a');
+  yt.className = 'sc-act'; yt.href = 'https://www.youtube.com/upload'; yt.target = '_blank'; yt.rel = 'noopener';
+  yt.title = 'Opens YouTube’s upload page in a new tab – drop the file there';
+  yt.append(icon('external-link', { size: '14px' }), ' Upload to YouTube');
+  box.append(yt);
+  act('', 'x', () => { box.hidden = true; }, 'Close').setAttribute('aria-label', 'Close');
+  box.hidden = false;
+}
 
 // ---------------------------------------------------------------- Sammeln
 // Gute Stellen des Originals in die Liste legen (aus dem Transkript oder von der Spur):
@@ -1853,7 +1874,8 @@ async function getIdeas({ topic = '', count = 16, keep = 5 } = {}) {
   });
   const st = modelStatus(t => { ideas.status.textContent = t; }), q = queue();
   try {
-    await generateIdeas({ key, model, words: ws, lang: S.lang, topic, count, onStatus: m => { ideas.status.textContent = m; }, onPhase: st.phase,
+    const { pron } = await request({ type: 'pron', words: vocabulary(ws) });
+    await generateIdeas({ key, model, words: ws, lang: S.lang, topic, count, pron, onStatus: m => { ideas.status.textContent = m; }, onPhase: st.phase,
       onLine: text => q.add(async () => {
         n++;
         const r = await request({ type: 'mix', text, speaker: spk });
@@ -1873,7 +1895,7 @@ async function getIdeas({ topic = '', count = 16, keep = 5 } = {}) {
 // ---------------------------------------------------------------- Schnittstelle für Agenten
 // Für Automatisierung (z. B. ein KI-Agent mit Browser-Zugriff). Beschreibung in README.md.
 // nur für den Oberflächentest (ohne Modelle): Quelle mit vorgegebenen Stufen-Ergebnissen anhängen
-if (location.hostname === 'localhost') window.__slinkyTest = { addSourceFile };
+if (location.hostname === 'localhost') window.__slinkyTest = { addSourceFile, exportDone };
 window.slinkyCut = {
   /** Was gesagt wird: [{w, s, e, spk}] (Sekunden in der Quelle). */
   transcript: () => S?.words.map(({ w, s, e, spk }) => ({ w, s, e, spk })) ?? [],

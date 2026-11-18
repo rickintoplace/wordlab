@@ -1,0 +1,11 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import { cleanMusic } from '../public/slinky/dsp.js';
+import { encodeWav } from '../public/slinky/engine.js';
+const [dir, out, a, b] = process.argv.slice(2);
+const f32 = f => { const x = readFileSync(f); return new Float32Array(x.buffer.slice(x.byteOffset, x.byteOffset + x.byteLength)); };
+const s = Number(a) * 48000, e = Number(b) * 48000;
+const m = f32(`${dir}/music48.f32`).slice(s, e), v = f32(`${dir}/vocals48.f32`).slice(s, e);
+const parts = [m, cleanMusic(m, v, { over: 2 }), cleanMusic(m, v, { over: 6, floor: 0.03 })];
+const gap = new Float32Array(48000), all = new Float32Array(parts.length * (m.length + gap.length));
+parts.forEach((p, i) => all.set(p, i * (m.length + gap.length)));
+writeFileSync(out, Buffer.from(encodeWav(all)));

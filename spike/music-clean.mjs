@@ -1,0 +1,20 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import { cleanMusic } from '../public/slinky/dsp.js';
+import { encodeWav } from '../public/slinky/engine.js';
+const [dir, out, a = 20, b = 40] = process.argv.slice(2);
+const f32 = f => { const x = readFileSync(f); return new Float32Array(x.buffer.slice(x.byteOffset, x.byteOffset + x.byteLength)); };
+const m = f32(`${dir}/music48.f32`), v = f32(`${dir}/vocals48.f32`);
+const t0 = performance.now();
+const c = cleanMusic(m, v);
+console.log(`${((performance.now() - t0) / 1000).toFixed(1)} s für ${(m.length / 48000).toFixed(0)} s`);
+// Stimmreste grob: Korrelation der Hüllkurven (Musik vs. Stimme) über 20-ms-Blöcke
+const env = x => { const B = 960, e = new Float32Array(Math.floor(x.length / B)); for (let k = 0; k < e.length; k++) { let s = 0; for (let i = k * B; i < (k + 1) * B; i++) s += x[i] * x[i]; e[k] = Math.sqrt(s / B); } return e; };
+const corr = (x, y) => { const n = x.length, mx = x.reduce((a, b) => a + b) / n, my = y.reduce((a, b) => a + b) / n; let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < n; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; } return sxy / Math.sqrt(sxx * syy); };
+const ev = env(v);
+console.log('Korrelation Musik/Stimme vorher', corr(env(m), ev).toFixed(3), 'nachher', corr(env(c), ev).toFixed(3));
+const rms = x => Math.sqrt(x.reduce((s, y) => s + y * y, 0) / x.length);
+console.log('Pegel vorher', (20 * Math.log10(rms(m))).toFixed(1), 'dB, nachher', (20 * Math.log10(rms(c))).toFixed(1), 'dB');
+const s = a * 48000, e = b * 48000, gap = new Float32Array(48000);
+const both = new Float32Array((e - s) * 2 + gap.length);
+both.set(m.subarray(s, e), 0); both.set(gap, e - s); both.set(c.subarray(s, e), e - s + gap.length);
+writeFileSync(out, Buffer.from(encodeWav(both)));

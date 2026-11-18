@@ -106,6 +106,9 @@ export function buildSource({ lang, words, phones, a16, a48, feat = null }) {
     if (data.lang === 'de' && nb && !p.pauseAfter && nb.w !== p.w && isVowel(nb.t)) p.nextT = 'ʔ';
     p.word = data.words[p.w].w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
     p.mid = (p.s + p.e) / 2;
+    // Verschlusslaut: Hälften an der Lösung teilen (links Verschluss, rechts Knall), sonst
+    // geht der Knall bei einem Schnitt in der Mitte verloren („Compu-er“)
+    if (/^(p|b|t|d|k|ɡ|ts|tʃ|pf)$/.test(p.t) && p.burst > p.s + 0.012 && p.burst < p.e - 0.008) p.mid = p.burst - 0.003;
     p.F = {};
     for (const [key, t] of [['s', p.s + 0.008], ['m', p.mid], ['e', p.e - 0.008]]) p.F[key] = pointFeat(feat, a16, t);
   });
@@ -123,8 +126,13 @@ export function buildSource({ lang, words, phones, a16, a48, feat = null }) {
     const pv = ph[p.i - 1];
     p.voiceOn = 0;
     if (!pv || pv.next !== p.i || !VLESS.test(pv.t) || !(isVowel(p.t) || VOICED.test(p.t))) continue;
+    // Ende der Behauchung: Stimme gefunden oder Pegel nahe am Höchstwert des Lauts
+    // (die Grundfrequenz-Suche versagt bei knarrender oder leiser Stimme)
+    const Ef = t => feat.energy[Math.min(feat.frames - 1, Math.max(0, Math.round(t * 200)))];
+    let top = -Infinity;
+    for (let t = p.s; t < p.e; t += 0.005) top = Math.max(top, Ef(t));
     let t = p.s;
-    while (t < p.e && !f0At(a16, Math.round(t * 16000))) t += 0.005;
+    while (t < p.e && !f0At(a16, Math.round(t * 16000)) && Ef(t) < top - 8) t += 0.005;
     p.voiceOn = +(t - p.s).toFixed(3);
   }
   const sorted = Float32Array.from(feat.energy).sort();
@@ -513,7 +521,9 @@ function selectOnce(src, tgt, K, constrain, cuts, only, pen) {
     // rechte Hälfte: nur, wenn die Behauchung bis in sie hineinreicht
     // … und bei kurzen Vokalen auch der Knall davor: dann klingt der ganze Vokal nach dem
     // Verschluss („Lipp-g-en“ aus dem „ə“ von „Augen“)
+    // Knall des Verschlusses davor reicht bis in die rechte Hälfte („h“ von „hat“ nach „Taktik“)
     const leakR = p => (p.voiceOn > p.mid - p.s + 0.01 && canon(p.prevT) !== canon(T.prevT) ? leak(p) : 0)
+      + (p.burstIn > p.mid - p.s && canon(p.prevT) !== canon(T.prevT) ? 2 * W.burstLeak : 0)
       + (p.burstIn && isVowel(T.t) && canon(p.prevT) !== canon(T.prevT)
         ? (p.burstIn > 0.5 * (p.e - p.s) ? 4 * W.burstLeak : p.e - p.s < W.shortV ? W.burstLeak : 0) : 0);
     const R = cands.map(({ p, base }) => ({ p, tc: base + vk(p.nextT, T.nextT) * ctxCost(p.nextT, T.nextT) + conf(p) + stressC(p) + wordB(p) + durC(p) + extra(p) + leakR(p) }));
@@ -619,6 +629,39 @@ export function plan(src, tgt, chosen) {
     if (st % 2 === 1 && T.pauseAfter) segs.at(-1).pauseAfter = T.pauseAfter;
     segs.at(-1).lastT = T.t;
   }
+  // Fällt der Pegel am Ende eines Stücks ab, weil in der Quelle ein Verschluss folgt
+  // („angepasst“: das „ə“ läuft in die Stille des „p“), hört man diese Stille nach dem Schnitt
+  // als „p“ („angepfasst“). Wo im Ziel kein Verschluss und keine Pause folgt, endet das
+  // Stück vor dem Abfall. Ebenso am Anfang: ein Laut, der in der Quelle aus Stille ansteigt.
+  // Pegel in 5-ms-Fenstern direkt am Ton (die Merkmal-Energie ist über 25 ms geglättet)
+  const A = src.a48, eAt = t => {
+    const i0 = Math.round(t * 48000);
+    let e = 1e-12;
+    for (let i = Math.max(0, i0); i < Math.min(A.length, i0 + 240); i++) e += A[i] * A[i];
+    return 10 * Math.log10(e / 240);
+  };
+  const STOPT = /^(p|b|t|d|k|ɡ|ts|tʃ|pf)$/;
+  segs.forEach((seg, k) => {
+    const last = chosen[seg.parts.at(-1)].p, nextT = tgt.phones[(seg.parts.at(-1) >> 1) + 1];
+    if (!seg.pauseAfter && nextT && !STOPT.test(nextT.t) && !STOPT.test(last.t) && seg.parts.at(-1) % 2 === 1) {
+      let lvl = -Infinity;
+      for (let t = Math.max(seg.start, last.s); t < seg.end - 0.01; t += 0.005) lvl = Math.max(lvl, eAt(t));
+      let e = seg.end;
+      while (e - 0.005 > Math.max(seg.start + 0.02, last.s + 0.02) && eAt(e - 0.005) < lvl - 8) e -= 0.005;
+      // Vor einem Verschluss trägt das Ende des Lauts schon dessen Mundbewegung (Formantübergang)
+      const nx = last.next >= 0 ? src.phones[last.next] : null;
+      if (nx && STOPT.test(nx.t) && e < seg.end) e = Math.max(seg.start + 0.02, last.s + 0.02, e - 0.012);
+      seg.end = e;
+    }
+    const first = chosen[seg.parts[0]].p, prevT = tgt.phones[(seg.parts[0] >> 1) - 1];
+    if (k && !segs[k - 1].pauseAfter && prevT && !STOPT.test(prevT.t) && !STOPT.test(first.t) && seg.parts[0] % 2 === 0 && first.pauseBefore !== true) {
+      let lvl = -Infinity;
+      for (let t = seg.start + 0.01; t < Math.min(seg.end, first.e); t += 0.005) lvl = Math.max(lvl, eAt(t));
+      let a = seg.start;
+      while (a + 0.005 < Math.min(seg.end - 0.02, first.e - 0.02) && eAt(a) < lvl - 12) a += 0.005;
+      seg.start = a;
+    }
+  });
   // Endet ein Stück mit einem Vokal, auf den in der Quelle gleich der Vokal des nächsten
   // Worts folgt („ihre | Augen“), steckt im Ende schon dessen Anfang: etwas früher aufhören
   for (const seg of segs) {

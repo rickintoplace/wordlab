@@ -492,3 +492,8 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .sc-ai-word.syllables { text-decoration-color: var(--q-syllables); }
 .sc-ai-word.sounds { text-decoration-color: var(--q-sounds); text-decoration-style: wavy; }
 .sc-ai-word:hover { background: color-mix(in oklab, var(--fg) 9%, transparent); }
+
+/* ------------------------------------------------------------------ nach dem Ausgeben */
+.sc-done { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center; padding: .55rem .8rem; border: 1px solid var(--line); border-radius: 10px; font-size: .88rem; }
+.sc-done > span { flex: 1 1 14rem; }
+.sc-done a.sc-act { text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: .3rem; }

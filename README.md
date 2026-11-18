@@ -113,7 +113,8 @@ by voice embedding (you confirm), and from then on cuts can use its words and
 sounds; its picture plays where its pieces are used.
 
 “Ideas” (`ideas.js`) asks a language model for lines made mostly of words the
-speaker actually says, with at most two words that have to be built from their
+speaker actually says (each with its IPA pronunciation, which made the jokes
+bolder in a comparison), with at most two words that have to be built from their
 syllables. Every line is cut, and only the funniest whose built words still fit
 together (low join cost) are kept. “AI rewrite” on selected voice clips does the
 same for just that passage and replaces it with the version you pick. “Find gold” has the model read the whole transcript for

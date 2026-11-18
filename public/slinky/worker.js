@@ -62,6 +62,7 @@ self.onmessage = async ({ data: m }) => {
     else if (m.type === 'phrase') post(phrase(m));
     else if (m.type === 'rewrite') post(rewrite(m));
     else if (m.type === 'find') post({ type: 'found', id: m.id, query: m.query, results: find(m.query, m.speaker) });
+    else if (m.type === 'pron') post({ type: 'pron', id: m.id, pron: pron(m.words) });
   } catch (err) {
     post({ type: 'error', id: m.id, message: err?.message ?? String(err), stack: err?.stack });
   }
@@ -69,7 +70,7 @@ self.onmessage = async ({ data: m }) => {
 
 // Ändert sich das Verorten (Lexikon, Grenzen), wird es aus den gespeicherten
 // Modell-Ergebnissen neu gerechnet – ohne die langsamen Stufen zu wiederholen.
-const ALIGN_VERSION = 6;   // 6: trennbare Vorsilben (an|ge|fasst); 3: Lexikon wählt die Standardform (wir → [viːɐ̯], nicht [mɐ]); 4: Zahlen werden ausgesprochen; 5: Längen aus dem Wörterbuch, Vokal-Vokal-Grenzen
+const ALIGN_VERSION = 7;   // 7: Grenzen an Verschluss, Knall und Stimmeinsatz; 6: trennbare Vorsilben (an|ge|fasst); 3: Lexikon wählt die Standardform (wir → [viːɐ̯], nicht [mɐ]); 4: Zahlen werden ausgesprochen; 5: Längen aus dem Wörterbuch, Vokal-Vokal-Grenzen
 
 const MUSIC_CLEAN = 2;      // Fassung der Stimmrest-Filterung der Musik
 const lexicon = lang => fetch(`/data/slinky/lex-${lang}.txt?v=${ALIGN_VERSION}`).then(r => r.text()).then(parseLexicon);
@@ -419,6 +420,21 @@ function stems(tgt, wi, speaker, perWord = 1) {
   });
   return [...best.values()].flatMap(l => l.sort((x, y) => y.conf - x.conf).slice(0, perWord))
     .sort((x, y) => y.L - x.L || y.conf - x.conf).slice(0, 3 * perWord);
+}
+
+/**
+ * Aussprache von Wörtern in IPA für das Sprachmodell: wie dieser Sprecher sie sagt, sonst
+ * nach Wörterbuch. Betonung als ˈ am Wortanfang.
+ */
+function pron(words) {
+  const { lang, lex, src } = current, out = {};
+  for (const w of words) {
+    const key = w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+    const k = src.lexicon.get(key);
+    const toks = k ? (k.toks ?? k) : pronounceSync(w, lang, lex).toks;
+    out[w] = toks.map(t => t.t + (t.stress === 1 ? 'ˈ' : '')).join('').replace(/(\S+?)ˈ/g, 'ˈ$1');
+  }
+  return out;
 }
 
 /** Unterschied zweier gleich langer Schreibungen als „p → f“ (nur ein zusammenhängendes Stück). */

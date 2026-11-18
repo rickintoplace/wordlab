@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Browser-Test: Phonemmodell</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; }
+  pre { background: color-mix(in oklab, canvasText 6%, canvas); padding: 1rem; border-radius: .4rem; white-space: pre-wrap; }
+  button, select { font: inherit; padding: .3rem .7rem; }
+</style>
+<h1>Browser-Test: Phonemmodell</h1>
+<p>Lässt wav2vec2-xlsr-53-espeak (dasselbe Modell wie im Spike) im Browser über 60 s Audio laufen und misst die Zeit.
+Beim ersten Mal wird das Modell heruntergeladen (q4: 240 MB, fp32: 1,3 GB) und danach im Browser zwischengespeichert.</p>
+<p>
+  <label>Gerät <select id="device"><option value="webgpu">WebGPU</option><option value="wasm">WASM (CPU)</option></select></label>
+  <label>Genauigkeit <select id="dtype"><option value="q4">q4 (240 MB)</option><option value="fp32">fp32 (1,3 GB)</option></select></label>
+  <button id="go">Start</button>
+</p>
+<pre id="log">Bereit.</pre>
+<script type="module">
+import { AutoModelForCTC, AutoFeatureExtractor, env } from './node_modules/@huggingface/transformers/dist/transformers.min.js';
+
+const MODEL = 'qnighy/wav2vec2-xlsr-53-espeak-cv-ft-ONNX';
+const logEl = document.getElementById('log');
+const log = s => { logEl.textContent += '\n' + s; };
+const status = document.createElement('p'); logEl.before(status);
+
+// Ohne WebGPU-Adapter gleich WASM vorwählen
+(async () => {
+  const a = navigator.gpu && await navigator.gpu.requestAdapter().catch(() => null);
+  if (!a) document.getElementById('device').value = 'wasm';
+})();
+
+async function gpuInfo() {
+  if (!navigator.gpu) return 'navigator.gpu fehlt (WebGPU aus oder nicht unterstützt)';
+  const a = await navigator.gpu.requestAdapter();
+  if (!a) return 'navigator.gpu da, aber kein Adapter';
+  const i = a.info ?? {};
+  return `${i.vendor ?? '?'} ${i.architecture ?? ''} ${i.description ?? ''} · shader-f16: ${a.features.has('shader-f16')}`;
+}
+
+document.getElementById('go').onclick = async () => {
+  const device = document.getElementById('device').value, dtype = document.getElementById('dtype').value;
+  logEl.textContent = `${navigator.userAgent}\nWebGPU: ${await gpuInfo()}\nThreads: ${navigator.hardwareConcurrency}, crossOriginIsolated: ${crossOriginIsolated}`;
+  try {
+    const audio = new Float32Array(await (await fetch('media/dino/a16-1min.f32')).arrayBuffer());
+    log(`Audio: ${(audio.length / 16000).toFixed(0)} s`);
+    let t = performance.now();
+    const model = await AutoModelForCTC.from_pretrained(MODEL, { dtype, device,
+      progress_callback: p => { if (p.status === 'progress' && p.file.endsWith('.onnx')) status.textContent = `Download ${p.file}: ${p.progress.toFixed(0)} %`; } });
+    status.textContent = '';
+    const fe = await AutoFeatureExtractor.from_pretrained(MODEL);
+    log(`Modell geladen (${device}, ${dtype}): ${((performance.now() - t) / 1000).toFixed(1)} s`);
+
+    const vocab = Object.entries(await (await fetch(`https://huggingface.co/${MODEL}/raw/main/vocab.json`)).json()).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+    const ref = new Float32Array(await (await fetch('media/dino/post-1min.bin')).arrayBuffer());
+    const V = vocab.length;
+
+    t = performance.now();
+    let agree = 0, total = 0, first = '';
+    for (let start = 0; start < audio.length; start += 20 * 16000) {
+      const chunk = audio.subarray(start, Math.min(audio.length, start + 20 * 16000));
+      const { input_values } = await fe(chunk);
+      const { logits } = await model({ input_values });
+      const [, T] = logits.dims, L = logits.data;
+      for (let f = 0; f < T; f++) {
+        const g = start / 320 + f; if (g * V >= ref.length) break;
+        let a = 0, b = 0;
+        for (let v = 1; v < V; v++) { if (L[f * V + v] > L[f * V + a]) a = v; if (ref[g * V + v] > ref[g * V + b]) b = v; }
+        agree += a === b; total++;
+        if (start === 0 && f < 150 && a !== 0 && (!first.endsWith(vocab[a] + ' '))) first += vocab[a] + ' ';
+      }
+      log(`  ${((start + chunk.length) / 16000).toFixed(0)} s …`);
+    }
+    const sec = (performance.now() - t) / 1000;
+    log(`Fertig: ${sec.toFixed(1)} s für 60 s Audio → ${(60 / sec).toFixed(1)}× Echtzeit`);
+    log(`Übereinstimmung mit der Node-Referenz (fp32): ${(100 * agree / total).toFixed(1)} % der Frames`);
+    log(`Erste 3 s gehört: ${first}`);
+  } catch (e) { log('FEHLER: ' + (e?.message ?? e) + '\n' + (e?.stack ?? '')); }
+};
+</script>

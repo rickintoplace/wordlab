@@ -261,6 +261,15 @@ export function alignWords({ words, post: P, V, vocab, audio16, pronounce, progr
     }
   });
 
+  // Landmarken: Das Modell hört einen Verschluss erst an seiner Lösung. Die Stille davor
+  // (der Verschluss) hing so am Laut davor („angepasst“: das „ə“ endete in der Stille des
+  // „p“), und der Anfang des Vokals danach hing am Verschluss – geschnitten klang das wie
+  // „angepfasst“. Hier werden die Grenzen an die hörbaren Ereignisse gelegt: Beginn der
+  // Stille, Knall, Einsatz des Vokals. Dazu: Stille am Anfang oder Ende eines Dauerlauts
+  // gehört nicht zu ihm.
+  // Hörvergleich (Nov. 2026): mit allen drei Regeln klar natürlicher („angefasst“ ohne „pf“)
+  if (!globalThis.SLINKY_NO_LM) refineLandmarks(phones, E, SIL);
+
   // Vokal an Vokal über eine Wortgrenze („ihre | Augen“): Das Modell setzt die Grenze oft
   // zu spät, dann klingt das „au“ im „ihre“ mit. Deutsch setzt dort einen Knacklaut (kurzer
   // Einbruch der Lautstärke); sonst nimmt man die Stelle des stärksten Klangwechsels.
@@ -291,4 +300,57 @@ export function alignWords({ words, post: P, V, vocab, audio16, pronounce, progr
   phones.forEach((p, i) => { const w = outWords[p.w]; if (w.ps < 0) w.ps = i; w.pe = i; });
   for (const w of outWords) if (w.ps >= 0) { w.as = phones[w.ps].s; w.ae = phones[w.pe].e; }
   return { words: outWords, phones, sil: SIL, feat };
+}
+
+const STOPS = /^(p|b|t|d|k|ɡ|ts|tʃ|pf)$/, SONOR = /^(a|e|i|o|u|y|ø|œ|ɛ|ɪ|ɔ|ʊ|ɑ|æ|ʌ|ɒ|ə|ɐ|ɜ|m|n|ŋ|l|r|ʁ|ɾ|ɹ|j|v|w|z)/;
+/** Grenzen um Verschlusslaute und Stille an hörbare Ereignisse legen (Energie im 5-ms-Raster). */
+export function refineLandmarks(phones, E, SIL, FR = 200) {
+  const use = new Set((globalThis.SLINKY_LM || 'close,sil,onset').split(','));   // nur für Tests
+  const fr = t => Math.max(0, Math.min(E.length - 1, Math.round(t * FR)));
+  const MIN = 0.02;                                   // kein Laut wird kürzer als 20 ms
+  for (let i = 0; i < phones.length; i++) {
+    const p = phones[i], pv = phones[i - 1], nx = phones[i + 1];
+    const linkedPrev = pv && !pv.pauseAfter, linkedNext = nx && !p.pauseAfter;
+    if (STOPS.test(p.t)) {
+      // Verschluss: tiefste Stelle zwischen Mitte des Lauts davor und Ende dieses Lauts
+      const a = fr(linkedPrev ? (pv.s + pv.e) / 2 : p.s - 0.03), b = fr(p.e + 0.03);
+      let lo = a;
+      for (let f = a; f <= b; f++) if (E[f] < E[lo]) lo = f;
+      let peakBefore = -Infinity;
+      for (let f = Math.max(0, lo - 30); f < lo; f++) peakBefore = Math.max(peakBefore, E[f]);
+      if (peakBefore - E[lo] < 15) continue;            // kein deutlicher Verschluss (stimmhaft, schnell)
+      // Knall: erster Frame nach der Stille, der 12 dB darüber liegt
+      let burst = -1;
+      for (let f = lo + 1; f <= Math.min(E.length - 1, lo + 30); f++) if (E[f] - E[lo] >= 12) { burst = f; break; }
+      if (burst < 0) continue;
+      // Beginn der Stille: von der tiefsten Stelle zurück, solange es 10 dB unter dem Pegel davor bleibt
+      let close = lo;
+      while (close > a && E[close - 1] < peakBefore - 10) close--;
+      p.burst = +(burst / FR).toFixed(3);
+      if (use.has('close') && linkedPrev && close / FR > pv.s + MIN && close / FR < p.e - MIN) { pv.e = p.s = +(close / FR).toFixed(3); }
+      // Der Knall gehört zum Verschlusslaut (sonst klingt der Folgelaut mit „t“ an)
+      const rel = +(burst / FR + 0.025).toFixed(3);
+      if (linkedNext && rel > p.e && rel < nx.e - MIN) p.e = nx.s = rel;
+      // Einsatz des Folgelauts: sobald der Pegel nahe am Höchstwert der nächsten 80 ms ist
+      if (use.has('onset') && linkedNext && SONOR.test(nx.t)) {
+        let top = -Infinity;
+        for (let f = burst; f <= Math.min(E.length - 1, burst + 16); f++) top = Math.max(top, E[f]);
+        const DB = globalThis.SLINKY_ONSET_DB ?? 4;
+        let on = burst + 5;
+        while (on < burst + 16 && E[on] < top - DB) on++;
+        const t = +(on / FR).toFixed(3);
+        if (t > p.s + MIN && t < nx.e - MIN) { p.e = nx.s = t; }
+      }
+      continue;
+    }
+    // Dauerlaut, der in Stille beginnt oder endet (Lücke, Atem): Stille abgeben
+    if (!use.has('sil') || (!SONOR.test(p.t) && !/^(f|s|ʃ|ç|x|h)$/.test(p.t))) continue;
+    let a = fr(p.s), b = fr(p.e);
+    let s0 = a;
+    while (s0 < b - 4 && E[s0] < SIL) s0++;
+    if (s0 - a >= 4 && (!linkedPrev || !STOPS.test(pv.t))) p.s = +(s0 / FR).toFixed(3);
+    let e0 = b;
+    while (e0 > fr(p.s) + 4 && E[e0 - 1] < SIL) e0--;
+    if (b - e0 >= 4 && (!linkedNext || !STOPS.test(nx.t))) p.e = +(e0 / FR).toFixed(3);
+  }
 }

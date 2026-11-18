@@ -42,7 +42,12 @@ export function vocabulary(words, max = 1500) {
 }
 
 /** Nachrichten für die Chat-Anfrage. `words` = [{w}] des gewählten Sprechers. */
-export function ideaMessages({ words, lang, topic = '', count = 10 }) {
+// Wortschatz mit Aussprache („Wasser /ˈvasɐ/“): Im Vergleich (Nov. 2026, 3 Varianten je 16
+// Zeilen) kamen so die witzigsten Zeilen, die sich trotzdem meist verständlich bauen ließen
+const PRON_NOTE = 'Each vocabulary word comes with its pronunciation in IPA – use it to find words that can be built from the speaker\'s sounds.\n';
+const vocabText = (vocab, pron) => (pron ? vocab.map(w => (pron[w] ? `${w} /${pron[w]}/` : w)) : vocab).join(', ');
+
+export function ideaMessages({ words, lang, topic = '', count = 10, pron = null }) {
   const vocab = vocabulary(words);
   const step = Math.max(1, Math.ceil(words.length / 1200));
   const sample = words.filter((_, i) => i % step === 0).map(w => w.w).join(' ');
@@ -53,8 +58,8 @@ export function ideaMessages({ words, lang, topic = '', count = 10 }) {
 ${topic ? `Theme or target of the jokes: ${topic}\n` : ''}Write ${count} different lines, 2 to 10 words each, mostly from the vocabulary below (at most two other words per line).
 Order them funniest first. Reply as JSON: {"lines": ["…", "…"]}
 
-Vocabulary (most frequent first):
-${vocab.join(', ')}
+${pron ? PRON_NOTE : ''}Vocabulary (most frequent first):
+${vocabText(vocab, pron)}
 
 What the speaker actually says (so you know their tone):
 ${sample}` },
@@ -74,8 +79,8 @@ Write ${count} new lines (same style, funniest first), mostly from the vocabular
  * fallen weg (sind es zu wenige, einmal nachfragen). Ob die gebauten Wörter
  * taugen, zeigt erst der Schnitt (buildCost). → { lines, dropped, cost }
  */
-export async function generateIdeas({ key, model = DEFAULT_MODEL, words, lang, topic = '', count = 16, want = 8, fetchFn = fetch, onStatus = () => {}, onLine = null, onPhase }) {
-  const messages = ideaMessages({ words, lang, topic, count });
+export async function generateIdeas({ key, model = DEFAULT_MODEL, words, lang, topic = '', count = 16, want = 8, fetchFn = fetch, onStatus = () => {}, onLine = null, onPhase, pron = null }) {
+  const messages = ideaMessages({ words, lang, topic, count, pron });
   onStatus('Asking the model…');
   const ok = [], allDropped = [];
   // jede Zeile sofort prüfen und (gestreamt) weitergeben
@@ -100,7 +105,7 @@ export async function generateIdeas({ key, model = DEFAULT_MODEL, words, lang, t
 }
 
 /** Nachrichten für „diese Stelle mit KI umschreiben“: Ausgangszeile + Wortschatz. */
-export function rewriteMessages({ words, lang, line, count = 10 }) {
+export function rewriteMessages({ words, lang, line, count = 10, pron = null }) {
   const vocab = vocabulary(words);
   const language = lang === 'de' ? 'German' : 'English';
   return [
@@ -110,14 +115,14 @@ The speaker says this in the video: "${line}"
 Write ${count} YTP versions of this line. Vary how far you go: a few versions change only one or two words (a ruder near-miss word, a swapped object, a twisted ending), others keep only some chunks of it and say something entirely different, or reorder its chunks. Each version needs its own joke – not the same sentence frame with different last words – and none may mean what the original means. Use words from the vocabulary below for anything new (at most two words per line that are not in it).
 Order them funniest first. Reply as JSON: {"lines": ["…", "…"]}
 
-Vocabulary (most frequent first):
-${vocab.join(', ')}` },
+${pron ? PRON_NOTE : ''}Vocabulary (most frequent first):
+${vocabText(vocab, pron)}` },
   ];
 }
 
 /** Umschreibungen holen (wie generateIdeas, mit Rückfrage bei zu vielen fremden Wörtern). */
-export async function rewriteIdeas({ key, model = DEFAULT_MODEL, words, lang, line, count = 10, want = 5, fetchFn = fetch, onLine = null, onPhase, effort = null }) {
-  const messages = rewriteMessages({ words, lang, line, count });
+export async function rewriteIdeas({ key, model = DEFAULT_MODEL, words, lang, line, count = 10, want = 5, fetchFn = fetch, onLine = null, onPhase, effort = null, pron = null }) {
+  const messages = rewriteMessages({ words, lang, line, count, pron });
   const norm = t => t.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase();
   const ok = [], dropped = [];
   const take = t => {
