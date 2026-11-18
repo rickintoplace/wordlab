@@ -48,7 +48,7 @@ body[data-page="slinky"] main { max-width: 52rem; align-items: stretch; }
 .sc-setup { display: grid; gap: 1rem; }
 .sc-filename { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
 .sc-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-.sc-note { margin: 0; color: var(--muted); font-size: .85rem; line-height: 1.45; }
+.sc-note { color: var(--muted); font-size: .85rem; line-height: 1.45; }
 
 .sc-seg { border: 0; padding: 0; margin: 0; display: flex; gap: .25rem; flex-wrap: wrap; }
 .sc-seg legend { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: .4rem; }
