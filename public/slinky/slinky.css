@@ -325,7 +325,7 @@ body.sc-editing .sc-mark .icon { width: 34px; height: 34px; }
 .sc-tag { font-size: .66rem; font-weight: 800; letter-spacing: .05em; padding: 0 .3rem; border-radius: 4px; background: var(--c-onset-2); color: var(--bg); vertical-align: middle; }
 
 /* Ablage der geschnittenen Sätze */
-.sc-bin { list-style: none; margin: .7rem 0 0; padding: 0; display: grid; gap: .35rem; max-height: 16rem; overflow-y: auto; }
+.sc-bin { list-style: none; margin: .7rem 0 0; padding: 0; display: grid; gap: .35rem; max-height: clamp(16rem, 48vh, 40rem); overflow-y: auto; }
 .sc-bin-item {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "play line acts" "play wave acts";
   gap: .1rem .55rem; align-items: center; padding: .4rem .5rem; border-radius: 9px; border: 1px solid var(--line); cursor: grab;
@@ -497,3 +497,12 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .sc-done { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center; padding: .55rem .8rem; border: 1px solid var(--line); border-radius: 10px; font-size: .88rem; }
 .sc-done > span { flex: 1 1 14rem; }
 .sc-done a.sc-act { text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: .3rem; }
+
+/* breite Bildschirme: mehr Platz für die Seitenleiste (Liste, Umschreiben) */
+@media (min-width: 1400px) { .sc-desk { grid-template-columns: minmax(0, 1.35fr) minmax(26rem, 1fr); } }
+@media (min-width: 1800px) { .sc-desk { grid-template-columns: minmax(0, 1.2fr) minmax(30rem, 1fr); } }
+
+.sc-ideas-keys summary { cursor: pointer; color: var(--muted); font-size: .82rem; }
+.sc-ideas-keys[open] summary { margin-bottom: .45rem; }
+.sc-ideas-keys summary span { color: var(--c-rime-1); }
+#ideas-topic { width: 100%; }

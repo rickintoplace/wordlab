@@ -18,7 +18,7 @@ Small tools for word play that work on **sounds**, not letters.
 All of them run entirely in the browser. It's a static site: HTML, CSS, ES
 modules and a few text files. There's no server and no tracking. Slinky-Cut
 downloads its AI models (about 650 MB) into the browser on first use; its
-optional “Ideas” feature calls a language model through your own OpenRouter key.
+optional “Find gold” feature calls a language model through your own OpenRouter key.
 
 ## How Misheard works
 
@@ -112,7 +112,7 @@ episode): it is analysed the same way, its voices are matched to the known ones
 by voice embedding (you confirm), and from then on cuts can use its words and
 sounds; its picture plays where its pieces are used.
 
-“Ideas” (`ideas.js`) asks a language model for lines made mostly of words the
+The scripting API's `ideas()` (`ideas.js`, no button any more) asks a language model for lines made mostly of words the
 speaker actually says (each with its IPA pronunciation, which made the jokes
 bolder in a comparison), with at most two words that have to be built from their
 syllables. Every line is cut, and only the funniest whose built words still fit
@@ -147,7 +147,7 @@ await slinkyCut.rewrite(id, 3, 'rätselhaft');         // retype word 3
 slinkyCut.place(id, 12.5);                            // onto the voice track at 12.5 s
 slinkyCut.play(10, 20);
 const wav = slinkyCut.wav();                          // whole mix as a WAV blob (or wav(t0, t1))
-await slinkyCut.ideas('a cooking show');              // needs the OpenRouter key in the Ideas box
+await slinkyCut.ideas('a cooking show');              // needs the OpenRouter key in the Find gold box
 ```
 
 UI test without models (feeds a prepared analysis into the browser, with a

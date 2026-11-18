@@ -153,21 +153,24 @@
               <div class="sc-say-opts">
                 <label class="sc-voice" id="voice-pick" hidden>Voice <select id="voice"></select></label>
                 <span class="sc-legend"><span class="q whole">whole word</span> <span class="q syllables">syllables</span> <span class="q sounds">single sounds</span></span>
-                <button type="button" class="sc-link" id="ideas-btn" aria-expanded="false"><span data-icon="sparkles" data-icon-size="14px"></span> Ideas</button>
+                <button type="button" class="sc-link" id="ideas-btn" aria-expanded="false" title="Let a language model look for funny passages"><span data-icon="sparkles" data-icon-size="14px"></span> Find gold</button>
               </div>
               <div class="sc-ideas" id="ideas" hidden>
-                <label>What about? <small>(optional)</small><input id="ideas-topic" type="text" placeholder="e.g. a cooking show, a breakup, the weather"></label>
-                <div class="sc-ideas-row">
-                  <label>OpenRouter key<input id="ideas-key" type="password" autocomplete="off" placeholder="sk-or-…"></label>
-                  <label>Model<input id="ideas-model" type="text" list="ideas-models" spellcheck="false"></label>
-                  <datalist id="ideas-models"></datalist>
-                </div>
+                <input id="ideas-topic" type="text" aria-label="What about? (optional)" placeholder="What about? (optional) e.g. a breakup, the weather">
+                <details class="sc-ideas-keys" id="ideas-keys">
+                  <summary>OpenRouter key and model <span id="ideas-keyinfo"></span></summary>
+                  <div class="sc-ideas-row">
+                    <label>OpenRouter key<input id="ideas-key" type="password" autocomplete="off" placeholder="sk-or-…"></label>
+                    <label>Model<input id="ideas-model" type="text" list="ideas-models" spellcheck="false"></label>
+                    <datalist id="ideas-models"></datalist>
+                  </div>
+                </details>
                 <div class="sc-row">
-                  <button type="button" class="pill-button sc-pill" id="ideas-go"><span data-icon="sparkles" data-icon-size="14px"></span> Get ideas</button>
+                  <button type="button" class="pill-button sc-pill" id="ideas-go" hidden><span data-icon="sparkles" data-icon-size="14px"></span> Get ideas</button>
                   <button type="button" class="pill-button sc-pill" id="finds-go" title="Let the model look through everything they say for passages that are funny as they are, or with a tiny edit"><span data-icon="zoom" data-icon-size="14px"></span> Find gold</button>
                   <span class="sc-note" id="ideas-status"></span>
                 </div>
-                <p class="sc-note">A language model writes sentences from the words in this video; Slinky-Cut cuts each one and keeps the funniest that cut cleanly. <b>Find gold</b> instead looks for passages that are funny as they are or with a tiny edit. This sends the transcript (text only, never the video) to OpenRouter and the model you choose. Your key stays in this browser. Get one at openrouter.ai/keys.</p>
+                <p class="sc-note">Finds passages that are funny as they are or with a tiny edit. Only the transcript goes to OpenRouter; your key stays here (<span title="openrouter.ai/keys">get one at openrouter.ai</span>).</p>
               </div>
               <div class="sc-bintabs" id="bintabs" role="tablist" hidden>
                 <button type="button" role="tab" data-tab="cut" aria-selected="true">Sentences <span></span></button>

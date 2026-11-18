@@ -1,0 +1,62 @@
+[
+ {
+  "file": "out/g-N/0-N.wav",
+  "text": "Der Hase hat eine Nase.",
+  "truth": "gut (ganzes „eine“)"
+ },
+ {
+  "file": "out/g2-M/0-M.wav",
+  "text": "Der Hase hat eine Nase.",
+  "truth": "„Fase“"
+ },
+ {
+  "file": "out/g-C/0-C.wav",
+  "text": "Der Hase hat eine Nase.",
+  "truth": "„eine“ klingt falsch"
+ },
+ {
+  "file": "out/g-N/1-N.wav",
+  "text": "Kacke",
+  "truth": "nur „Ka-“"
+ },
+ {
+  "file": "out/g2-M/1-M.wav",
+  "text": "Kacke",
+  "truth": "„Kacke“, Betonung auf 2. Silbe"
+ },
+ {
+  "file": "out/g-C/1-C.wav",
+  "text": "Kacke",
+  "truth": "okay"
+ },
+ {
+  "file": "out/g-N/2-N.wav",
+  "text": "Die Blase platzt.",
+  "truth": "etwas „Belase“"
+ },
+ {
+  "file": "out/g2-M/2-M.wav",
+  "text": "Die Blase platzt.",
+  "truth": "„Blasse“"
+ },
+ {
+  "file": "out/g-C/2-C.wav",
+  "text": "Die Blase platzt.",
+  "truth": "okay"
+ },
+ {
+  "file": "out/g-N/3-N.wav",
+  "text": "Mein Computer frisst Pizza.",
+  "truth": "[t] in Computer verschluckt"
+ },
+ {
+  "file": "out/g2-M/3-M.wav",
+  "text": "Mein Computer frisst Pizza.",
+  "truth": "[t] hörbar, besser"
+ },
+ {
+  "file": "out/g-C/3-C.wav",
+  "text": "Mein Computer frisst Pizza.",
+  "truth": "[t] verschluckt"
+ }
+]

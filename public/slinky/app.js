@@ -790,7 +790,7 @@ function inspect(sel) {
     btn(on ? 'Hide lips' : 'Show lips', () => lips(voiced, !on), 'film', 'L · Put the video of them saying each piece on the Lips track');
   }
   if (voiced.length && voiced.some(x => clipText(x))) btn('Save in Gold', () => clipsToList(voiced).then(pulseGold).catch(err => fail(err.message)), 'star', 'Keep this in the Gold list, to edit or reuse it');
-  if (voiced.length && voiced.some(x => clipText(x))) btn('AI rewrite', () => aiRewrite(voiced), 'sparkles', 'Let a language model turn this into YTP versions (needs your OpenRouter key under Ideas)');
+  if (voiced.length && voiced.some(x => clipText(x))) btn('AI rewrite', () => aiRewrite(voiced), 'sparkles', 'Let a language model turn this into YTP versions (needs your OpenRouter key under Find gold)');
   if (!many && c.type === 'snip') {
     const row = document.createElement('div');
     row.className = 'sc-nudge';
@@ -865,7 +865,7 @@ async function aiRewrite(cs) {
   if (!key) {
     if (ideas.box.hidden) ideas.btn.click();
     ideas.status.textContent = 'Enter your OpenRouter key here first, then try AI rewrite again.';
-    ideas.key.focus();
+    $('ideas-keys').open = true; ideas.key.focus();
     return;
   }
   const spk = clipSpeaker(cs[0]);
@@ -1582,7 +1582,7 @@ const idleFinds = () => { findsGo.disabled = false; ideas.go.disabled = false; f
 /** Das Sprachmodell sucht Stellen, die so oder mit kleinem Eingriff lustig sind; sie kommen in die Liste. */
 async function findGoldUI(topic = '') {
   const key = ideas.key.value.trim(), model = ideas.model.value.trim() || DEFAULT_MODEL;
-  if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; ideas.key.focus(); return; }
+  if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; $('ideas-keys').open = true; ideas.key.focus(); return; }
   store.set('slinky-openrouter-key', key); store.set('slinky-openrouter-model', model);
   findsGo.disabled = true; ideas.go.disabled = true; findsGo.classList.add('busy'); ideas.status.classList.add('sc-busy-text');
   const spk = speaker();
@@ -1852,7 +1852,10 @@ const ideas = { btn: $('ideas-btn'), box: $('ideas'), topic: $('ideas-topic'), k
 ideas.key.value = store.get('slinky-openrouter-key');
 // alte Voreinstellung durch die neue ersetzen, eine eigene Wahl bleibt
 ideas.model.value = [store.get('slinky-openrouter-model')].find(m => m && m !== 'google/gemini-2.5-flash-lite') ?? DEFAULT_MODEL;
-ideas.key.addEventListener('change', () => store.set('slinky-openrouter-key', ideas.key.value.trim()));
+// Schlüssel gespeichert: Feld zugeklappt, nur ein Hinweis; ohne Schlüssel offen
+const keyInfo = () => { const k = ideas.key.value.trim(); $('ideas-keyinfo').textContent = k ? '· saved' : ''; if (!k) $('ideas-keys').open = true; };
+keyInfo();
+ideas.key.addEventListener('change', () => { store.set('slinky-openrouter-key', ideas.key.value.trim()); keyInfo(); });
 ideas.model.addEventListener('change', () => store.set('slinky-openrouter-model', ideas.model.value.trim()));
 ideas.btn.addEventListener('click', () => {
   ideas.box.hidden = !ideas.box.hidden;
@@ -1874,7 +1877,7 @@ ideas.go.addEventListener('click', () => S && getIdeas({ topic: ideas.topic.valu
 /** Satzvorschläge holen, schneiden, bewerten; die besten `keep` kommen in die Liste. */
 async function getIdeas({ topic = '', count = 16, keep = 5 } = {}) {
   const key = ideas.key.value.trim(), model = ideas.model.value.trim() || DEFAULT_MODEL;
-  if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; ideas.key.focus(); return []; }
+  if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; $('ideas-keys').open = true; ideas.key.focus(); return []; }
   store.set('slinky-openrouter-key', key); store.set('slinky-openrouter-model', model);
   ideas.go.disabled = true; findsGo.disabled = true; ideas.go.classList.add('busy'); ideas.status.classList.add('sc-busy-text');
   const spk = speaker();
