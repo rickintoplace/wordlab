@@ -2,6 +2,15 @@
 // Antworten ersetzt (kostet nichts); Schneiden und Platzieren laufen echt.
 export default async ({ page, shot, log, sleep }) => {
   const ev = s => page.eval(s);
+  if (process.env.KEY401) {
+    await ev(`(() => { const real = window.fetch; window.fetch = async (u, o) => String(u).includes('openrouter.ai/api/v1/chat') ? new Response('{"error":{"message":"User not found.","code":401}}', { status: 401 }) : real(u, o);
+      localStorage.setItem('slinky-openrouter-key', 'sk-or-old'); document.getElementById('ideas-key').value = 'sk-or-old'; document.getElementById('ideas-key').dispatchEvent(new Event('change')); document.getElementById('ideas-keys').open = false; document.getElementById('ideas-btn').click(); })()`);
+    await sleep(200);
+    await ev(`document.getElementById('story-go').click()`);
+    await sleep(800);
+    log('401:', await ev(`document.getElementById('ideas-status').textContent`), '· Schlüsselfeld offen:', await ev(`document.getElementById('ideas-keys').open`), '· Knopf wieder frei:', await ev(`!document.getElementById('story-go').disabled`));
+    return;
+  }
   await ev(`(() => { window.__errs = []; addEventListener('error', e => __errs.push(e.message)); addEventListener('unhandledrejection', e => __errs.push(String(e.reason))); })()`);
   // ein Gold-Eintrag zum Einbauen
   await ev(`slinkyCut.cut('Die Bestien haben Hunger.')`);

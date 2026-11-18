@@ -920,6 +920,7 @@ async function aiRewrite(cs) {
   } catch (err) {
     busy.className = 'sc-note';
     busy.textContent = err.message;
+    if (err.code === 'key') aiFail(err);
   } finally { st.stop(); }
 }
 
@@ -1593,7 +1594,7 @@ async function clipsToList(cs) {
 
 // ---------------------------------------------------------------- Fundstücke
 const findsGo = $('finds-go');
-findsGo.addEventListener('click', () => S && findGoldUI(ideas.topic.value.trim()).catch(err => { ideas.status.textContent = err.message; idleFinds(); }));
+findsGo.addEventListener('click', () => S && findGoldUI(ideas.topic.value.trim()).catch(err => { aiFail(err); idleFinds(); }));
 const idleFinds = () => { findsGo.disabled = false; ideas.go.disabled = false; findsGo.classList.remove('busy'); ideas.status.classList.remove('sc-busy-text'); };
 /** Das Sprachmodell sucht Stellen, die so oder mit kleinem Eingriff lustig sind; sie kommen in die Liste. */
 async function findGoldUI(topic = '') {
@@ -1651,7 +1652,12 @@ const KIND = { orig: ['Orig', 'As they say it in the video'], edit: ['Edit', 'A 
 const LENGTHS = { short: 'short (~30 s)', medium: 'medium (~1 min)', long: 'long (~2 min)' };
 let storyBusy = false;
 storyGo.addEventListener('click', () => S && storyIdeasUI().catch(storyFail));
-function storyFail(err) { ideas.status.textContent = err.message; busyStory(false); }
+function storyFail(err) { aiFail(err); busyStory(false); }
+/** Fehler des Sprachmodells anzeigen; liegt es am Schlüssel, das Schlüsselfeld öffnen. */
+function aiFail(err) {
+  ideas.status.textContent = err.message;
+  if (err.code === 'key') { ideas.box.hidden = false; ideas.btn.setAttribute('aria-expanded', 'true'); $('ideas-keys').open = true; ideas.key.select(); }
+}
 
 /** Schlüssel und Modell aus dem Ideen-Feld (fehlt der Schlüssel: Hinweis). */
 function aiKey() {
@@ -2169,7 +2175,7 @@ async function loadModels() {
   } catch { /* ohne Netz: Freitext */ }
 }
 const idle = () => { ideas.go.disabled = false; findsGo.disabled = false; ideas.go.classList.remove('busy'); ideas.status.classList.remove('sc-busy-text'); };
-ideas.go.addEventListener('click', () => S && getIdeas({ topic: ideas.topic.value.trim() }).catch(err => { ideas.status.textContent = err.message; idle(); }));
+ideas.go.addEventListener('click', () => S && getIdeas({ topic: ideas.topic.value.trim() }).catch(err => { aiFail(err); idle(); }));
 
 /** Satzvorschläge holen, schneiden, bewerten; die besten `keep` kommen in die Liste. */
 async function getIdeas({ topic = '', count = 16, keep = 5 } = {}) {

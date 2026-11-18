@@ -483,7 +483,13 @@ export async function askOpenRouter({ key, model = DEFAULT_MODEL, messages, effo
     body: JSON.stringify({ model, messages, temperature: 1.0, response_format: { type: 'json_object' }, ...(effort === 'none' ? { reasoning: { enabled: false } } : effort ? { reasoning: { effort } } : {}),
       ...(stream ? { stream: true, usage: { include: true } } : {}) }),
   });
-  if (!res.ok) { const t = await res.text(); throw new Error(`OpenRouter: ${res.status} ${t.slice(0, 160)}`); }
+  if (!res.ok) {
+    const t = await res.text();
+    // Schlüssel gelöscht, falsch kopiert oder ohne Guthaben: sagen, was zu tun ist
+    if (res.status === 401) throw Object.assign(new Error('OpenRouter does not know this key (deleted or mistyped?). Paste a current key under “OpenRouter key and model”.'), { code: 'key' });
+    if (res.status === 402) throw Object.assign(new Error('This OpenRouter key has no credit left. Add credit at openrouter.ai or use another key.'), { code: 'key' });
+    throw new Error(`OpenRouter: ${res.status} ${t.slice(0, 160)}`);
+  }
   const items = new ArrayItems();
   // Antwort kam doch am Stück (kein Stream): alle Elemente auf einmal melden
   if (!stream || !/event-stream/.test(res.headers.get('content-type') ?? '') || !res.body) {
