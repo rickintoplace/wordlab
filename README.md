@@ -120,7 +120,7 @@ together (low join cost) are kept. “AI rewrite” on selected voice clips does
 same for just that passage and replaces it with the version you pick. “Find gold” has the model read the whole transcript for
 passages that are funny as they are or with a tiny edit (stop early, swap a
 word); the edits keep the speaker's own words where they are unchanged.
-“Write a story” plans a short YTP with one premise, a running gag and a punchline:
+“Write a story” (in its own panel below the timeline) plans a short YTP with one premise, a running gag and a punchline, using only pictures that are in the video (reinterpreted, not changed):
 the model first suggests a few ideas built from the footage (and from the Gold
 list), then writes the scenes of the one you pick – mostly original passages as
 setup and tiny edits of them, Gold clips where they fit, and few new lines, each

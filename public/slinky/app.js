@@ -3,7 +3,7 @@
 // Die Rechenarbeit machen stages.js (Modelle) und worker.js (Verorten, Schneiden).
 
 import { paintIcons, icon } from '../icons.js';
-import { encodeWav } from './engine.js';
+import { encodeWav, splitWords } from './engine.js';
 import { Timeline, clock, reserveIds } from './timeline.js';
 import { endOf, speedOf, srcSpan, timeOf, toggleCrossfades, migrate, keptSpan } from './project.js';
 import { Player } from './player.js';
@@ -244,6 +244,7 @@ async function ready(m) {
   if (S.bin.length && saved?.binAv !== m.alignVersion) recutBin();
   S.binTab = 'cut';
   renderBin();
+  renderStory();
   const voiceLen = Math.min(duration, m.voice.length / SR);
   if (saved?.clips?.length) {
     const p = migrate(saved);
@@ -448,18 +449,17 @@ function wordHandle(el, b, wi) {
 }
 
 // Reiter: Sätze, Gold, Geschichte (deren Szenen sind eigene Einträge mit story: true)
-const inTab = (b, tab) => (tab === 'story' ? false : !b.story && !!b.gold === (tab === 'gold'));
+const inTab = (b, tab) => !b.story && !!b.gold === (tab === 'gold');
 function renderBin() {
   const gold = S.binTab === 'gold';
   const tabs = $('bintabs');
-  const any = S.bin.length || S.story;
+  const any = S.bin.some(b => !b.story);
   tabs.hidden = !any;
   for (const t of tabs.querySelectorAll('[data-tab]')) {
     t.setAttribute('aria-selected', String(t.dataset.tab === S.binTab));
-    t.querySelector('span').textContent = t.dataset.tab === 'story' ? (S.story?.scenes?.length || '') : S.bin.filter(b => inTab(b, t.dataset.tab)).length || '';
+    t.querySelector('span').textContent = S.bin.filter(b => inTab(b, t.dataset.tab)).length || '';
   }
   els.bin.hidden = !any;
-  if (S.binTab === 'story') { renderStory(); return; }
   const items = S.bin.filter(b => inTab(b, S.binTab));
   if (!items.length) {
     els.bin.innerHTML = gold
@@ -1633,7 +1633,7 @@ async function findGoldUI(topic = '') {
 
 /** Bearbeitung einer Stelle: Was aus dem Zitat bleibt, bleibt genau dieses Vorkommen (mit seinen Pausen). */
 function editForce(idx, edit) {
-  const kept = keptWords(idx.map(i => S.words[i].w), edit.split(/\s+/).filter(Boolean));
+  const kept = keptWords(idx.map(i => S.words[i].w), splitWords(edit));
   const words = {}, pauses = {};
   for (const [j, k] of kept) {
     words[j] = idx[k];
@@ -1651,18 +1651,23 @@ const storyGo = $('story-go');
 const KIND = { orig: ['Orig', 'As they say it in the video'], edit: ['Edit', 'A small edit of an original passage'], gold: ['Gold', 'From your Gold list'], new: ['New', 'A new line – the picture comes from the passage that fits'] };
 const LENGTHS = { short: 'short (~30 s)', medium: 'medium (~1 min)', long: 'long (~2 min)' };
 let storyBusy = false;
-storyGo.addEventListener('click', () => S && storyIdeasUI().catch(storyFail));
+// Gibt es schon eine Geschichte (Feld nur geschlossen), öffnet der Knopf sie wieder
+storyGo.addEventListener('click', () => {
+  if (!S) return;
+  if (S.story?.closed && (S.story.pitches?.length || S.story.scenes?.length)) { S.story.closed = false; renderStory(); $('story').scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+  storyIdeasUI().catch(storyFail);
+});
 function storyFail(err) { aiFail(err); busyStory(false); }
 /** Fehler des Sprachmodells anzeigen; liegt es am Schlüssel, das Schlüsselfeld öffnen. */
 function aiFail(err) {
-  ideas.status.textContent = err.message;
+  storySay(err.message);
   if (err.code === 'key') { ideas.box.hidden = false; ideas.btn.setAttribute('aria-expanded', 'true'); $('ideas-keys').open = true; ideas.key.select(); }
 }
 
 /** Schlüssel und Modell aus dem Ideen-Feld (fehlt der Schlüssel: Hinweis). */
 function aiKey() {
   const key = ideas.key.value.trim(), model = ideas.model.value.trim() || DEFAULT_MODEL;
-  if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; $('ideas-keys').open = true; ideas.key.focus(); return null; }
+  if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; ideas.box.hidden = false; $('ideas-keys').open = true; ideas.key.focus(); return null; }
   store.set('slinky-openrouter-key', key); store.set('slinky-openrouter-model', model);
   return { key, model };
 }
@@ -1677,7 +1682,7 @@ function busyStory(on) {
   storyBusy = on;
   storyGo.disabled = on; findsGo.disabled = on;
   storyGo.classList.toggle('busy', on); ideas.status.classList.toggle('sc-busy-text', on);
-  renderBin();
+  renderStory();
 }
 
 async function storyIdeasUI() {
@@ -1685,18 +1690,17 @@ async function storyIdeasUI() {
   if (!ai) return;
   const { words, pos } = storyWords();
   const { sentences } = transcriptSentences(words);
-  S.story = { length: 'medium', scenes: [], ...(S.story ?? {}), pitches: [], showIdeas: true,
+  S.story = { length: 'medium', scenes: [], ...(S.story ?? {}), pitches: [], showIdeas: true, closed: false,
     sents: sentences.map(x => [pos[x[0]], pos[x.at(-1)]]), goldIds: storyGold().map(g => g.id) };
-  S.binTab = 'story';
   busyStory(true);
-  $('bintabs').scrollIntoView({ block: 'start', behavior: 'smooth' });
-  const st = modelStatus(t => { ideas.status.textContent = t; });
+  $('story').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  const st = modelStatus(t => { storySay(t); });
   try {
     await storyPitches({ ...ai, words, lang: S.lang, topic: ideas.topic.value.trim(), gold: storyGold(), onPhase: st.phase,
-      onPitch: p => { S.story.pitches.push(p); renderBin(); } });
+      onPitch: p => { S.story.pitches.push(p); renderStory(); } });
   } finally { st.stop(); }
   if (!S.story.pitches.length) throw new Error('The model sent no ideas. Try again.');
-  ideas.status.textContent = 'Pick an idea in the Story tab.';
+  storySay('Pick an idea below the timeline.');
   busyStory(false); save();
 }
 
@@ -1735,7 +1739,7 @@ const dropItems = ids => { const x = new Set(ids); S.bin = S.bin.filter(b => !x.
 function removeItem(id) {
   dropItems([id]);
   if (S.story?.scenes) S.story.scenes = S.story.scenes.filter(sc => sc.id !== id);
-  renderBin(); save();
+  renderBin(); renderStory(); save();
 }
 
 async function writeStoryUI(pitch) {
@@ -1745,17 +1749,17 @@ async function writeStoryUI(pitch) {
   dropItems((S.story?.scenes ?? []).map(sc => sc.id));
   S.story = { ...S.story, pitch, scenes: [], showIdeas: false };
   busyStory(true);
-  const st = modelStatus(t => { ideas.status.textContent = t; }), q = queue();
+  const st = modelStatus(t => { storySay(t); }), q = queue();
   try {
     const res = await writeStory({ ...ai, words, lang: S.lang, pitch, gold, length: S.story.length, onPhase: st.phase,
       onScene: s => {
         const sc = sceneFrom(s, pos, gold);
         sc.pending = true;
-        S.story.scenes.push(sc); renderBin();
+        S.story.scenes.push(sc); renderStory();
         q.add(async () => {
           try { await cutScene(sc); } catch { /* fällt unten weg */ }
-          sc.pending = false; renderBin();
-          ideas.status.textContent = `${S.story.scenes.filter(x => x.id).length} scenes cut so far…`;
+          sc.pending = false; renderStory();
+          storySay(`${S.story.scenes.filter(x => x.id).length} scenes cut so far…`);
         });
       } });
     S.story.outline = res.outline;
@@ -1767,13 +1771,13 @@ async function writeStoryUI(pitch) {
   // Was sich nicht sauber schneiden lässt: einmal leichtere Fassungen holen
   const weak = S.story.scenes.map((sc, i) => (sc.cost > MAX_BUILD_COST ? i : -1)).filter(i => i >= 0);
   if (weak.length) {
-    ideas.status.textContent = `Asking for easier versions of ${weak.length} scene${weak.length > 1 ? 's' : ''}…`;
+    storySay(`Asking for easier versions of ${weak.length} scene${weak.length > 1 ? 's' : ''}…`);
     await replaceScenes(weak, ai, { onlyIfBetter: true, why: sc => {
       const b = S.bin.find(x => x.id === sc.id);
       return `does not cut cleanly: ${(b?.words ?? []).filter(w => w.quality === 'sounds').map(w => w.w).join(', ') || 'words'} would be stitched from single sounds`;
     } }).catch(() => {});
   }
-  ideas.status.textContent = `${S.story.scenes.length} scenes in the Story tab. Listen, swap or remove scenes, then place them on the timeline.`;
+  storySay(`${S.story.scenes.length} scenes. Listen, swap or remove scenes, then place them on the timeline.`);
   busyStory(false); save();
 }
 
@@ -1783,7 +1787,7 @@ async function replaceScenes(list, ai, { why, onlyIfBetter = false }) {
   const messages = storyMessages({ words, lang: S.lang, pitch: S.story.pitch, gold, length: S.story.length });
   const content = JSON.stringify({ outline: S.story.outline ?? '', scenes: S.story.scenes.map(sc => rawScene({ ...sc, gold: sc.kind === 'gold' ? Math.max(0, gold.findIndex(g => g.id === sc.goldId)) : 0 })) });
   const weak = list.map(i => ({ n: i + 1, text: S.story.scenes[i].text || S.story.scenes[i].quote, why: why(S.story.scenes[i]) }));
-  const st = modelStatus(t => { ideas.status.textContent = t; });
+  const st = modelStatus(t => { storySay(t); });
   let r;
   try { r = await fixScenes({ ...ai, words, gold, messages, content, weak, onPhase: st.phase }); } finally { st.stop(); }
   const old = [...S.story.scenes];
@@ -1798,7 +1802,7 @@ async function replaceScenes(list, ai, { why, onlyIfBetter = false }) {
     const k = S.story.scenes.indexOf(prev);
     if (k >= 0) S.story.scenes[k] = sc;
   }
-  renderBin(); save();
+  renderStory(); save();
   return r.scenes.length;
 }
 
@@ -1806,7 +1810,7 @@ function moveScene(i, d) {
   const sc = S.story.scenes, j = i + d;
   if (j < 0 || j >= sc.length) return;
   [sc[i], sc[j]] = [sc[j], sc[i]];
-  renderBin(); save();
+  renderStory(); save();
 }
 
 /** Verweise des Modells anklickbar: „#12“, „#12–15“ (Sätze) und „G2“ (Gold). */
@@ -1815,13 +1819,13 @@ function refs(text) {
     .replace(/#(\d+)(?:\s*[–-]\s*#?(\d+))?/g, (m, a, b) => `<button type="button" class="sc-ref" data-s="${a}" data-e="${b ?? a}" title="Show this passage">${m}</button>`)
     .replace(/\bG(\d+)\b/g, (m, n) => `<button type="button" class="sc-ref" data-g="${n}" title="Listen to this Gold clip">${m}</button>`);
 }
-els.bin.addEventListener('click', e => {
+$('story').addEventListener('click', e => {
   const r = e.target.closest('.sc-ref');
   if (!r || !S?.story) return;
   e.stopPropagation();
   if (r.dataset.g) {
     const g = S.bin.find(x => x.id === S.story.goldIds?.[r.dataset.g - 1]);
-    if (g) { S.player.listen(g.audio); ideas.status.textContent = `G${r.dataset.g}: “${g.text}”`; }
+    if (g) { S.player.listen(g.audio); storySay(`G${r.dataset.g}: “${g.text}”`); }
     return;
   }
   const a = S.story.sents?.[r.dataset.s - 1], b = S.story.sents?.[r.dataset.e - 1] ?? a;
@@ -1837,77 +1841,90 @@ els.bin.addEventListener('click', e => {
 
 /** Drehbuch-Ansicht im Reiter „Story“. */
 function renderStory() {
-  const st = S.story;
-  const li = (cls, html = '') => { const x = document.createElement('li'); x.className = cls; x.innerHTML = html; return x; };
-  const btn = (label, ic, fn, cls = 'sc-act') => { const x = document.createElement('button'); x.type = 'button'; x.className = cls; if (ic) x.append(icon(ic, { size: '14px' }), ' '); x.append(label); x.addEventListener('click', ev => { ev.stopPropagation(); fn(); }); return x; };
+  const box = $('story'), st = S?.story;
+  const has = st && (st.pitches?.length || st.scenes?.length);
+  box.hidden = !S || st?.closed || (!has && !storyBusy);
+  if (box.hidden) return;
+  const el = (tag, cls, html = '') => { const x = document.createElement(tag); if (cls) x.className = cls; x.innerHTML = html; return x; };
+  const btn = (label, ic, fn, cls = 'sc-act') => { const x = document.createElement('button'); x.type = 'button'; x.className = cls; if (ic) x.append(icon(ic, { size: '14px' }), ' '); x.append(label); x.disabled = storyBusy; x.addEventListener('click', ev => { ev.stopPropagation(); fn(); }); return x; };
   const out = [];
-  if (!st || (!st.pitches?.length && !st.scenes?.length)) {
-    els.bin.replaceChildren(li('sc-hint', storyBusy ? 'Waiting for ideas…' : 'No story yet. Open <b>Find gold</b> and click <b>Write a story</b>: the model suggests a few ideas built from this video, you pick one, and it writes the scenes – mostly original passages and small edits, so picture and voice fit. Your Gold list is used where it fits.'));
-    return;
-  }
-  if (st.scenes?.length) {
-    const head = li('sc-story-head', `<p><b>${esc(st.pitch?.title || 'Your story')}</b> ${refs(st.pitch?.premise ?? '')}</p>${st.outline ? `<details class="sc-story-outline"><summary>Outline</summary><p>${refs(st.outline)}</p></details>` : ''}`);
-    const row = document.createElement('div');
-    row.className = 'sc-row';
+  // Kopf: Name, Aktionen, Länge, Schließen
+  const bar = el('div', 'sc-story-bar');
+  bar.append(el('h2', '', esc(st?.scenes?.length ? st.pitch?.title || 'Your story' : 'Story ideas')));
+  if (st?.scenes?.length) {
     const place = btn('Place on the timeline', 'plus', placeStory, 'pill-button sc-pill');
     place.disabled = storyBusy || st.scenes.some(sc => sc.pending);
     place.title = 'All scenes in order behind the end of the timeline, with their picture; the export range is set to them';
-    const other = btn(st.showIdeas ? 'Hide ideas' : 'Other ideas', 'sparkles', () => { st.showIdeas = !st.showIdeas; renderBin(); });
-    other.disabled = storyBusy;
-    row.append(place, other);
-    head.append(row);
-    out.push(head);
+    bar.append(place, btn(st.showIdeas ? 'Hide ideas' : 'Other ideas', 'sparkles', () => { st.showIdeas = !st.showIdeas; renderStory(); }));
   }
-  if (!st.scenes?.length || st.showIdeas) {
-    const opts = li('sc-story-opts');
-    const lab = document.createElement('label');
-    lab.textContent = 'Length ';
+  if (!st?.scenes?.length || st.showIdeas) {
+    const lab = el('label', '', 'Length ');
     const sel = document.createElement('select');
     sel.id = 'story-length';
     sel.append(...Object.entries(LENGTHS).map(([v, t]) => Object.assign(document.createElement('option'), { value: v, textContent: t })));
-    sel.value = st.length ?? 'medium';
-    sel.addEventListener('change', () => { st.length = sel.value; save(); });
+    sel.value = st?.length ?? 'medium';
+    sel.addEventListener('change', () => { S.story.length = sel.value; save(); });
     lab.append(sel);
-    opts.append(lab, btn('New ideas', 'sparkles', () => storyIdeasUI().catch(storyFail)));
-    opts.querySelectorAll('button').forEach(x => { x.disabled = storyBusy; });
-    out.push(opts);
-    const own = ideas.topic.value.trim();
-    const pitches = [...(st.pitches ?? []), ...(own ? [{ title: 'Your idea', premise: own, why: 'from the “What about?” field', own: true }] : [])];
-    for (const p of pitches) {
-      const card = li('sc-story-pitch', `<p><b>${esc(p.title)}</b> ${refs(p.premise)}</p>${p.why ? `<p class="sc-note">${refs(p.why)}</p>` : ''}`);
-      const w = btn('Write this story', 'file-text', () => writeStoryUI(p).catch(storyFail), 'sc-act');
-      w.disabled = storyBusy;
-      card.append(w);
-      out.push(card);
-    }
+    bar.append(lab, btn('New ideas', 'sparkles', () => storyIdeasUI().catch(storyFail)));
   }
-  (st.scenes ?? []).forEach((sc, i) => {
-    const b = sc.id && S.bin.find(x => x.id === sc.id);
-    const [tag, tip] = KIND[sc.kind] ?? ['', ''];
-    const top = `<span class="sc-story-n">${i + 1}</span> <span class="sc-tag sc-kind-${sc.kind}" title="${esc(tip)}">${tag}</span> <span class="sc-story-beat">${esc(sc.beat ?? '')}</span>${sc.cost > MAX_BUILD_COST ? ' <span class="sc-story-warn" title="Some words are stitched from single sounds – try another version">hard to cut</span>' : ''}`;
-    if (!b) { out.push(li('sc-story-scene pending', `<div class="sc-story-top">${top}</div><p class="sc-note">Cutting “${esc(sc.text || sc.quote || '…')}”…</p>`)); return; }
-    const item = binLi(b);
-    item.classList.add('sc-story-scene');
-    const bar = document.createElement('div');
-    bar.className = 'sc-story-top';
-    bar.innerHTML = top;
-    const acts = document.createElement('span');
-    acts.className = 'sc-story-acts';
-    const mini = (ic, title, fn, cls = '') => { const x = document.createElement('button'); x.type = 'button'; x.className = `sc-mini ${cls}`; x.title = title; x.setAttribute('aria-label', title); x.append(icon(ic, { size: '13px' })); x.disabled = storyBusy; x.addEventListener('click', ev => { ev.stopPropagation(); fn(); }); acts.append(x); };
-    mini('arrow-up', 'Move up', () => moveScene(i, -1));
-    mini('arrow-up', 'Move down', () => moveScene(i, 1), 'sc-flip');
-    mini('sparkles', 'Another version of this scene', () => {
-      const ai = aiKey();
-      if (!ai) return;
-      busyStory(true);
-      replaceScenes([i], ai, { why: () => 'the editor wants another version here: a different joke for the same spot' })
-        .then(n => { ideas.status.textContent = n ? 'Scene replaced.' : 'No other version came back. Try again.'; busyStory(false); }).catch(storyFail);
+  const close = btn('', 'x', () => { S.story.closed = true; renderStory(); save(); }, 'sc-mini sc-x');
+  close.disabled = false; close.title = 'Close (Write a story opens it again)'; close.setAttribute('aria-label', 'Close');
+  bar.append(close);
+  out.push(bar);
+  const status = el('p', 'sc-note', esc(st?.status ?? ''));
+  status.id = 'story-status';
+  if (storyBusy) status.classList.add('sc-busy-text');
+  out.push(status);
+  if (st?.scenes?.length) {
+    out.push(el('p', 'sc-story-premise', refs(st.pitch?.premise ?? '')));
+    if (st.outline) out.push(el('details', 'sc-story-outline', `<summary>Outline</summary><p>${refs(st.outline)}</p>`));
+  }
+  if (!st?.scenes?.length || st.showIdeas) {
+    const own = ideas.topic.value.trim();
+    const pitches = [...(st?.pitches ?? []), ...(own ? [{ title: 'Your idea', premise: own, why: 'from the “What about?” field', own: true }] : [])];
+    const grid = el('ol', 'sc-story-grid');
+    for (const p of pitches) {
+      const card = el('li', 'sc-story-pitch', `<p><b>${esc(p.title)}</b> ${refs(p.premise)}</p>${p.why ? `<p class="sc-note">${refs(p.why)}</p>` : ''}`);
+      card.append(btn('Write this story', 'file-text', () => writeStoryUI(p).catch(storyFail)));
+      grid.append(card);
+    }
+    if (pitches.length) out.push(grid);
+  }
+  if (st?.scenes?.length) {
+    const grid = el('ol', 'sc-story-grid');
+    st.scenes.forEach((sc, i) => {
+      const b = sc.id && S.bin.find(x => x.id === sc.id);
+      const [tag, tip] = KIND[sc.kind] ?? ['', ''];
+      const top = `<span class="sc-story-n">${i + 1}</span> <span class="sc-tag sc-kind-${sc.kind}" title="${esc(tip)}">${tag}</span> <span class="sc-story-beat" title="${esc(sc.beat ?? '')}">${esc(sc.beat ?? '')}</span>${sc.cost > MAX_BUILD_COST ? ' <span class="sc-story-warn" title="Some words are stitched from single sounds – try another version">hard to cut</span>' : ''}`;
+      if (!b) { grid.append(el('li', 'sc-story-scene pending', `<div class="sc-story-top">${top}</div><p class="sc-note">Cutting “${esc(sc.text || sc.quote || '…')}”…</p>`)); return; }
+      const item = binLi(b);
+      item.classList.add('sc-story-scene');
+      const head = el('div', 'sc-story-top', top);
+      const acts = el('span', 'sc-story-acts');
+      const mini = (ic, title, fn, cls = '') => { const x = document.createElement('button'); x.type = 'button'; x.className = `sc-mini ${cls}`; x.title = title; x.setAttribute('aria-label', title); x.append(icon(ic, { size: '13px' })); x.disabled = storyBusy; x.addEventListener('click', ev => { ev.stopPropagation(); fn(); }); acts.append(x); };
+      mini('arrow-up', 'Move up', () => moveScene(i, -1));
+      mini('arrow-up', 'Move down', () => moveScene(i, 1), 'sc-flip');
+      mini('sparkles', 'Another version of this scene', () => {
+        const ai = aiKey();
+        if (!ai) return;
+        busyStory(true);
+        replaceScenes([i], ai, { why: () => 'the editor wants another version here: a different joke for the same spot' })
+          .then(n => { storySay(n ? 'Scene replaced.' : 'No other version came back. Try again.'); busyStory(false); }).catch(storyFail);
+      });
+      head.append(acts);
+      item.prepend(head);
+      grid.append(item);
     });
-    bar.append(acts);
-    item.prepend(bar);
-    out.push(item);
-  });
-  els.bin.replaceChildren(...out);
+    out.push(grid);
+  }
+  box.replaceChildren(...out);
+}
+/** Meldung im Story-Feld (und im Ideen-Feld darüber). */
+function storySay(t) {
+  if (S?.story) S.story.status = t;
+  ideas.status.textContent = t;
+  const x = $('story-status');
+  if (x) x.textContent = t;
 }
 
 /** Alle Szenen der Reihe nach hinter das Ende der Zeitleiste, mit Bild; Ausgabebereich darauf. */
@@ -1949,7 +1966,7 @@ function placeStory() {
   tl.setSelection(placed.map(([, c]) => c.id));
   reveal(placed[0][1]);
   S.player.sync(tl.playhead);
-  ideas.status.textContent = `Placed ${placed.length} scenes at ${clock(at0)}, with their picture. The export range covers them.`;
+  storySay(`Placed ${placed.length} scenes at ${clock(at0)}, with their picture. The export range covers them.`);
 }
 
 // ---------------------------------------------------------------- Weitere Quellen
@@ -2131,7 +2148,7 @@ async function openProject(f) {
     tl.commit();
     const p = migrate(h.project);
     tl.tracks = p.tracks; tl.clips = p.clips; reserveIds(p.clips);
-    S.bin = h.project.bin ?? []; S.story = h.project.story ?? null; S.binTab = 'cut'; renderBin();
+    S.bin = h.project.bin ?? []; S.story = h.project.story ?? null; S.binTab = 'cut'; renderBin(); renderStory();
     tl.build();
     if (h.project.range) tl.setRange(h.project.range.a, h.project.range.b); else tl.setRange(null, null);
     tl.changed();

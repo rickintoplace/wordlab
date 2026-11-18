@@ -325,7 +325,7 @@ body.sc-editing .sc-mark .icon { width: 34px; height: 34px; }
 .sc-tag { font-size: .66rem; font-weight: 800; letter-spacing: .05em; padding: 0 .3rem; border-radius: 4px; background: var(--c-onset-2); color: var(--bg); vertical-align: middle; }
 
 /* Ablage der geschnittenen Sätze */
-.sc-bin { list-style: none; margin: .7rem 0 0; padding: 0; display: grid; gap: .35rem; max-height: clamp(16rem, 48vh, 40rem); overflow-y: auto; }
+.sc-bin { list-style: none; margin: .7rem 0 0; padding: 0; display: grid; gap: .35rem; }
 .sc-bin-item {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "play line acts" "play wave acts";
   gap: .1rem .55rem; align-items: center; padding: .4rem .5rem; border-radius: 9px; border: 1px solid var(--line); cursor: grab;
@@ -472,7 +472,8 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .sc-tag-orig { background: var(--c-rime-1); }
 
 /* ------------------------------------------------------------------ Ablage: Sätze | Gold */
-.sc-bintabs { display: flex; gap: .25rem; margin-top: .7rem; border-bottom: 1px solid var(--line); }
+/* Reiter bleiben oben stehen, während die Liste in der Seitenleiste scrollt (nur ein Scrollbereich) */
+.sc-bintabs { display: flex; gap: .25rem; margin-top: .7rem; border-bottom: 1px solid var(--line); position: sticky; top: -4px; z-index: 3; background: var(--bg); padding-top: 4px; }
 .sc-bintabs button { display: inline-flex; align-items: center; gap: .35rem; font: inherit; font-size: .85rem; font-weight: 600; color: var(--muted);
   background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: .35rem .6rem; cursor: pointer; border-radius: 6px 6px 0 0; }
 .sc-bintabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--c-onset-1); }
@@ -510,15 +511,26 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 #ideas-pick { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: .35rem .4rem; min-width: 0; }
 .sc-ideas-other { grid-column: 1 / -1; }
 
-/* Geschichte: Idee oben, darunter die Szenen in Reihenfolge (jede wie ein Listeneintrag) */
-.sc-story-head, .sc-story-pitch, .sc-story-opts { padding: .55rem .65rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); display: grid; gap: .45rem; }
-.sc-story-head { border-color: color-mix(in srgb, var(--c-onset-1) 45%, var(--line)); }
-.sc-story-head p, .sc-story-pitch p { margin: 0; font-size: .88rem; line-height: 1.45; }
+/* Geschichte: eigene Fläche unter der Zeitleiste, volle Breite. Oben Idee und Aktionen,
+   darunter Ideen als Karten bzw. die Szenen der Reihe nach in einem Raster. */
+.sc-story { margin-top: 1rem; padding: .9rem 1rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: grid; gap: .8rem; }
+.sc-story-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; }
+.sc-story-bar h2 { margin: 0; font-size: 1rem; font-weight: 750; }
+.sc-story-bar .sc-note { margin: 0; }
+.sc-story-bar .sc-x { margin-left: auto; }
+.sc-story-bar label { font-size: .85rem; color: var(--muted); }
+.sc-story-bar select { font: inherit; }
+.sc-story-premise { margin: 0; font-size: .92rem; line-height: 1.5; max-width: 75ch; }
+.sc-story-outline { font-size: .86rem; color: var(--muted); max-width: 75ch; }
+.sc-story-outline summary { cursor: pointer; }
+.sc-story-outline p { margin: .3rem 0 0; line-height: 1.5; }
+.sc-story-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); }
+.sc-story-pitch { padding: .65rem .75rem; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); display: grid; gap: .45rem; align-content: start; }
+.sc-story-pitch p { margin: 0; font-size: .88rem; line-height: 1.45; }
 .sc-story-pitch .sc-act { justify-self: start; }
-.sc-story-opts { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; font-size: .85rem; }
-.sc-story-opts select { font: inherit; }
-.sc-story-scene { grid-template-areas: "top top top" "play line acts" "play wave acts"; }
-.sc-story-scene.pending { display: grid; gap: .3rem; padding: .5rem .65rem; border: 1px dashed var(--line); border-radius: 8px; }
+.sc-story-scene { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "top top" "play line" "wave wave" "acts acts"; align-content: start; }
+.sc-story-scene .sc-bin-acts { justify-self: end; }
+.sc-story-scene.pending { display: grid; gap: .3rem; padding: .5rem .65rem; border: 1px dashed var(--line); border-radius: 9px; }
 .sc-story-top { grid-area: top; display: flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--muted); min-width: 0; }
 .sc-story-n { font-weight: 800; color: var(--fg); font-variant-numeric: tabular-nums; }
 .sc-story-beat { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -529,6 +541,3 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .sc-kind-gold { background: var(--c-rime-2); }
 .sc-ref { font: inherit; font-weight: 650; color: var(--c-onset-1); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .sc-ref:hover { text-decoration-style: solid; }
-.sc-story-outline { font-size: .84rem; color: var(--muted); }
-.sc-story-outline summary { cursor: pointer; }
-.sc-story-outline p { margin: .3rem 0 0; }
