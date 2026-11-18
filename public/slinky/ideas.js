@@ -249,6 +249,12 @@ What makes a good YTP story:
 - rude, crude and toilet humour are welcome; YTP is not polite
 - coherent: heard in order, the scenes tell one story, like a narrator would – each scene follows from the one before (same subject, cause and effect, a callback), not a list of separate jokes. Every scene serves the premise.
 - stay in one or two sequences of the video (the same animal, place or event) and mostly follow their original order: then topic and picture stay together and the viewer can follow
+- actually funny, not a theme stuck onto the footage: every scene has its own joke or sets up a later one. The best trick: a harmless original sentence becomes funny because of what came before (the new context turns it into innuendo, an insult or an absurd confirmation). Escalate, and let the last scene surprise. Boring is failure – no generic "the animals are lazy / hungry / grumpy" stories.
+
+The picture cannot be changed – it can only be cut, reordered and reinterpreted. Every idea must work with what is really visible in the passages it uses: the narrator claims that something else is going on in the same shots. Never require animals, people, objects, places or actions that are not in the video (no "the penguin opens a restaurant" when no restaurant is shown, no "the lion kisses the antelope" when that is not filmed).
+
+Example of the level we want (a cooking show, not your material). Premise: the chef is secretly in love with the onion.
+orig "Now we take a fresh onion." – edit "Now we take a fresh onion … home." – orig "Gently stroke it with the knife." (now it sounds tender) – edit "I love the onion more than my wife." – orig "It needs a little more heat." (now innuendo) – edit "The onion is dead. Add salt."
 
 It must be easy to build: the editor can only use what the speaker really says, and the picture comes with the sound. So:
 - most scenes are original passages as they are ("orig") or with a tiny edit ("edit": one to three words swapped, dropped or added, or cut short). Then picture, lips and melody fit by themselves.
@@ -274,7 +280,7 @@ export async function storyPitches({ key, model = DEFAULT_MODEL, words, lang, to
 Suggest ${count} different story ideas for a YTP of about one minute. Each needs a different kind of joke; at least two are rude. Each must be easy to build from this footage (mostly original passages and tiny edits).
 - "title": at most 6 words
 - "premise": one or two sentences: what happens, the running gag and the punchline
-- "why": at most 15 words: which passages or pictures it builds on – name sentences as #12 or #12–15 and gold clips as G2
+- "why": at most 20 words: which passages it uses (name sentences as #12 or #12–15, gold clips as G2), what is seen there and how the story reinterprets it
 Reply as JSON: {"pitches": [{"title": "…", "premise": "…", "why": "…"}]}
 ${goldText(gold)}
 Transcript:
