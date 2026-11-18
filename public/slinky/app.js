@@ -237,6 +237,10 @@ async function ready(m) {
   // Gespeichertes Projekt fortsetzen, sonst: Video, Originalstimme und Musik als je ein Clip
   const saved = await cache.get(`project|${key}`).catch(() => null);
   S.bin = saved?.bin ?? [];
+  S.alignVersion = m.alignVersion;
+  // Sind die Laute inzwischen anders verortet, klingen die Sätze der Liste noch nach dem alten
+  // Stand: im Hintergrund neu schneiden (gleicher Text, gleiche Wahl je Wort)
+  if (S.bin.length && saved?.binAv !== m.alignVersion) recutBin();
   S.binTab = 'cut';
   renderBin();
   const voiceLen = Math.min(duration, m.voice.length / SR);
@@ -353,7 +357,7 @@ function save() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => cache.put(`project|${key}`, projectState()).catch(() => {}), 800);
 }
-const projectState = () => ({ tracks: S.tl.tracks, clips: S.tl.clips, bin: S.bin, range: S.tl.range });
+const projectState = () => ({ tracks: S.tl.tracks, clips: S.tl.clips, bin: S.bin, range: S.tl.range, binAv: S.alignVersion });
 
 /** Zielspur für neuen Ton: die Tonspur des gewählten Clips, sonst „Voice“. */
 function voiceTrack() {
@@ -556,6 +560,19 @@ for (const el of [$('bintabs'), els.bin]) {
     saveGold(dragging.item);
     dragging = null;
   });
+}
+
+async function recutBin() {
+  const st = S;
+  for (const b of [...st.bin]) {
+    if (b.snip || S !== st) continue;
+    try {
+      const r = await request({ type: 'mix', text: b.text, speaker: b.speaker ?? null, force: b.force ?? {} });
+      if (S !== st) return;
+      Object.assign(b, { audio: r.audio, words: r.words, pieces: r.pieces, force: r.force ?? b.force, rev: (b.rev ?? 0) + 1 });
+    } catch { /* bleibt, wie es war */ }
+  }
+  if (S === st) { renderBin(); save(); }
 }
 
 function selectBin(id) {

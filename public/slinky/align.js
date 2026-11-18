@@ -268,7 +268,15 @@ export function alignWords({ words, post: P, V, vocab, audio16, pronounce, progr
   // Stille, Knall, Einsatz des Vokals. Dazu: Stille am Anfang oder Ende eines Dauerlauts
   // gehört nicht zu ihm.
   // Hörvergleich (Nov. 2026): mit allen drei Regeln klar natürlicher („angefasst“ ohne „pf“)
-  if (!globalThis.SLINKY_NO_LM) refineLandmarks(phones, E, SIL);
+  if (!globalThis.SLINKY_NO_LM) {
+    // Pegel in 5-ms-Fenstern ohne Glättung (die Merkmal-Energie mittelt über 25 ms und
+    // verwischt kurze Verschlüsse wie das „t“ in „Unterfangen“)
+    const E5 = new Float32Array(Math.floor(audio16.length / 80));
+    for (let f = 0; f < E5.length; f++) { let e = 1e-10; for (let i = f * 80; i < f * 80 + 80; i++) e += audio16[i] * audio16[i]; E5[f] = 10 * Math.log10(e / 80); }
+    const so = Float32Array.from(E5).sort();
+    const SIL5 = Math.max(so[Math.floor(so.length * 0.05)] + 6, so[Math.floor(so.length * 0.95)] - 22);
+    refineLandmarks(phones, E5, SIL5);
+  }
 
   // Vokal an Vokal über eine Wortgrenze („ihre | Augen“): Das Modell setzt die Grenze oft
   // zu spät, dann klingt das „au“ im „ihre“ mit. Deutsch setzt dort einen Knacklaut (kurzer
@@ -329,14 +337,16 @@ export function refineLandmarks(phones, E, SIL, FR = 200) {
       p.burst = +(burst / FR).toFixed(3);
       if (use.has('close') && linkedPrev && close / FR > pv.s + MIN && close / FR < p.e - MIN) { pv.e = p.s = +(close / FR).toFixed(3); }
       // Der Knall gehört zum Verschlusslaut (sonst klingt der Folgelaut mit „t“ an)
-      const rel = +(burst / FR + 0.025).toFixed(3);
+      // stimmhafte Verschlüsse (b, d, g) lösen sich ohne Behauchung: kürzer
+      const voiced = /^(b|d|ɡ)$/.test(p.t);
+      const rel = +(burst / FR + (voiced ? 0.012 : 0.025)).toFixed(3);
       if (linkedNext && rel > p.e && rel < nx.e - MIN) p.e = nx.s = rel;
       // Einsatz des Folgelauts: sobald der Pegel nahe am Höchstwert der nächsten 80 ms ist
       if (use.has('onset') && linkedNext && SONOR.test(nx.t)) {
         let top = -Infinity;
         for (let f = burst; f <= Math.min(E.length - 1, burst + 16); f++) top = Math.max(top, E[f]);
         const DB = globalThis.SLINKY_ONSET_DB ?? 4;
-        let on = burst + 5;
+        let on = burst + (voiced ? 2 : 4);
         while (on < burst + 16 && E[on] < top - DB) on++;
         const t = +(on / FR).toFixed(3);
         if (t > p.s + MIN && t < nx.e - MIN) { p.e = nx.s = t; }

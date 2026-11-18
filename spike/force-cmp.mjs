@@ -4,10 +4,15 @@
 import { readFileSync } from 'node:fs';
 import { parseLexicon } from '../public/slinky/g2p.js';
 import { buildSource, targetPhones, select, wholeWords, wordKey } from '../public/slinky/engine.js';
+import { alignWords } from '../public/slinky/align.js';
+import { pronounceSync } from '../public/slinky/g2p.js';
 const [dir, text, ti, word] = process.argv.slice(2);
 const f32 = f => { const b = readFileSync(f); return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
 const lex = parseLexicon(readFileSync(new URL('../public/data/slinky/lex-de.txt', import.meta.url), 'utf8'));
-const { words, phones } = JSON.parse(readFileSync(`${dir}/phones.json`));
+const meta = JSON.parse(readFileSync(`${dir}/post.json`));
+const raw = JSON.parse(readFileSync(`${dir}/words.json`)).words.map(w => ({ ...w, spk: w.spk ?? 0 }));
+if (process.env.NO_LM) globalThis.SLINKY_NO_LM = true;
+const { words, phones } = alignWords({ words: raw, post: f32(`${dir}/post.bin`), V: meta.V, vocab: meta.vocab, audio16: f32(`${dir}/a16.f32`), pronounce: w => pronounceSync(w, 'de', lex).toks });
 const src = buildSource({ lang: 'de', words, phones, a16: f32(`${dir}/a16.f32`), a48: f32(`${dir}/a48.f32`) });
 const tgt = targetPhones(text, 'de', lex, src);
 const { constrain } = wholeWords(src, tgt);

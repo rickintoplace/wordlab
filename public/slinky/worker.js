@@ -150,7 +150,7 @@ async function prepare({ lang, words, phones, voice16, voice48, music48, sources
   const music = music48 ? music48.slice() : null, voice = voice48.slice();
   post({ type: 'ready', lang,
     words: src.words.map(w => ({ w: w.w, s: w.as ?? w.s, e: w.ae ?? w.e, spk: w.spk ?? 0 })),
-    speakers, hasMusic: !!music, music, voice, accent: [...src.accent], sources },
+    speakers, hasMusic: !!music, music, voice, accent: [...src.accent], sources, alignVersion: ALIGN_VERSION },
   [voice.buffer, ...(music ? [music.buffer] : [])]);
 }
 
@@ -215,13 +215,16 @@ function cut(text, speaker, force = {}) {
       if (!sts.length) return;
       base ??= select(src, tgt, 250, constrain, 'all', only).total;
       let best = null;
-      for (const st of sts.filter(x => x.L === sts[0].L || x.word === sts[0].word)) {
+      for (const st of sts.filter(x => x.near || x.L === sts[0].L || x.word === sts[0].word)) {
         const c = { ...constrain };
         for (const [ti, pi] of st.map) c[ti] = p => p.i === pi;
         const t = select(src, tgt, 250, c, 'all', only).total;
+        // Minimalpaare („angepasst“ → „angefasst“) klangen im Hörtest klar besser als frei
+        // gebaut, obwohl die Schnittkosten höher sind: großzügigere Grenze
+        if (t - base > (st.near ? NEAR_MARGIN : STEM_MARGIN)) continue;
         if (!best || t < best.t) best = { t, c };
       }
-      if (best && best.t - base <= STEM_MARGIN) { Object.assign(constrain, best.c); base = best.t; }
+      if (best) { Object.assign(constrain, best.c); base = best.t; }
     });
   }
   const { chosen, stepCost, total } = select(src, tgt, 250, constrain, 'all', only);
@@ -251,7 +254,9 @@ function describe({ tgt, chosen, segs, instances, stepCost = [] }) {
   // Ausgabeposition jeder Lauthälfte (Schritt st), Anfang und Ende
   const outAt = new Map(), segOf = new Map();
   for (const seg of segs) for (const st of seg.parts) {
-    const p = chosen[st].p, t = st % 2 === 0 ? p.s : p.mid;
+    // Steckt am Anfang noch der Knall des Verschlusses davor („und|hinten“), beginnt das Wort
+    // für sich angehört erst danach (sonst „Tintern“)
+    const p = chosen[st].p, t = st % 2 === 0 ? Math.min(p.mid, p.s + (p.burstIn ? p.burstIn + 0.01 : 0)) : p.mid;
     outAt.set(st, (seg.o0 ?? 0) / SR + Math.max(0, t - seg.start));
     segOf.set(st, seg);
   }
@@ -373,7 +378,8 @@ function option(text, speaker, force, wi, label, kind, seen, cur, extra = {}) {
  * „treiben“ + s, ge + „fangen“ + e. Je Wort das am sichersten erkannte Vorkommen,
  * die längsten zuerst, höchstens drei. rest = Buchstaben davor und danach.
  */
-const STEM_MARGIN = 3.0;   // so viel teurer (Schnittkosten) darf „Wort am Stück + Rest“ sein
+const STEM_MARGIN = 3.0;
+const NEAR_MARGIN = 12;    // dasselbe für „Wort mit einem anderen Laut / einer anderen Silbe“   // so viel teurer (Schnittkosten) darf „Wort am Stück + Rest“ sein
 function stems(tgt, wi, speaker, perWord = 1) {
   const { src } = current;
   const only = bySpeaker(src, speaker);

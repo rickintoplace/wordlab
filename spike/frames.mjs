@@ -6,6 +6,7 @@ import { buildSource } from '../public/slinky/engine.js';
 import { alignWords } from '../public/slinky/align.js';
 import { f0At } from '../public/slinky/dsp.js';
 if (process.env.LM) globalThis.SLINKY_LM = process.env.LM;
+if (process.env.NO_LM) globalThis.SLINKY_NO_LM = true;
 const [dir, word, nr = 0] = process.argv.slice(2);
 const f32 = f => { const b = readFileSync(f); return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
 const lex = parseLexicon(readFileSync(new URL('../public/data/slinky/lex-de.txt', import.meta.url), 'utf8'));

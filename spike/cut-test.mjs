@@ -21,5 +21,7 @@ for (const [i, text] of texts.entries()) {
   console.log(text, '→', r.words.map(w => `${w.w}[${w.quality}${w.quality === 'whole' ? '' : ' ' + w.cost?.toFixed(1)}: ${[...new Set(w.from)].join('+')}]`).join(' '));
   if (process.env.STEMS) console.log('   ', globalThis.__slinky.stemReport(text).join(' / '));
   all.push(r.audio, new Float32Array(24000));
+  // WORDS=Hintern: dieses Wort zusätzlich für sich (so wie beim Anklicken)
+  for (const w of r.words) if (process.env.WORDS?.split(',').includes(w.w.replace(/[^\p{L}]/gu, ''))) all.push(r.audio.slice(Math.round(w.start * 48000), Math.round(w.end * 48000)), new Float32Array(24000));
 }
 if (process.env.OUT) { const n = all.reduce((a, x) => a + x.length, 0), o = new Float32Array(n); let k = 0; for (const x of all) { o.set(x, k); k += x.length; } writeFileSync(process.env.OUT, Buffer.from(encodeWav(o))); }

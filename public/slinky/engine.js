@@ -49,6 +49,8 @@ export const W = {
   vowelCtx: 2.5,
   lenSwap: 1.0,          // gleicher Vokal, andere Länge (o/oː); die Dauer bewertet durDev zusätzlich
   vowelSwap: 4.0,        // anderer Vokal derselben Klasse (ɔ statt oː, ɛ statt eː)
+  noRelease: 3.0,        // Verschlusslaut ohne Knall, wo das Ziel einen braucht
+  shortVowel: 2.0,       // je Hälfte: vom Vokal bleiben nach Knall/Behauchung keine 30 ms
   shortV: 0.06,          // Vokal so kurz, dass der Knall des Verschlusses davor ihn ganz färbt (s)
   reuse: 4.0,            // derselbe Quellvokal schon in einem anderen Wort des Satzes (hörbar kopiert)
   chain: 1.5,            // Bonus, wenn zwei Wörter am Stück aus der Quelle kommen (Satzmelodie bleibt natürlich)
@@ -118,9 +120,11 @@ export function buildSource({ lang, words, phones, a16, a48, feat = null }) {
   const VLESS = /^(p|t|k|ts|tʃ)$/, VOICED = /^(l|m|n|ŋ|r|ʁ|ɾ|ɹ|j|w|v|z)$/;
   // Liegt die Verschlusslösung des Laut davor (das „g“ von „Augen“, das „t“ vor „hat“)
   // noch in diesem Laut? Dann klingt sein Anfang danach – Abstand in Sekunden.
+  // Nach stimmlosen Verschlüssen gehört die Behauchung (≈ 25 ms nach dem Knall) noch dazu
   for (const p of ph) {
     const pv = ph[p.i - 1];
-    p.burstIn = pv && pv.next === p.i && pv.burst != null && pv.burst > p.s - 0.004 ? +Math.max(0, pv.burst - p.s).toFixed(3) + 0.004 : 0;
+    const tail = pv && /^(p|t|k|ts|tʃ|pf)$/.test(pv.t) ? 0.025 : 0.004;
+    p.burstIn = pv && pv.next === p.i && pv.burst != null && pv.burst + tail > p.s ? +Math.min(p.e - p.s, Math.max(0, pv.burst - p.s) + tail).toFixed(3) : 0;
   }
   for (const p of ph) {
     const pv = ph[p.i - 1];
@@ -487,7 +491,9 @@ function selectOnce(src, tgt, K, constrain, cuts, only, pen) {
     const conf = p => (p.lp < -0.7 ? W.lowConf * (-0.7 - p.lp) : 0) + (p.raw && p.real !== p.raw ? W.realized : 0);
     const STOPS = /^(p|b|t|d|k|ɡ|ts|tʃ)$/;
     const expDur = src.typical(T.t) * (isVowel(T.t) ? (T.stress === 1 ? 1.25 : T.stress === 0 ? 0.85 : 1) : 1) * (T.pauseAfter ? 1.3 : 1);
-    const durC = p => W.durDev * 0.5 * Math.abs(Math.log((p.e - p.s) / expDur));
+    // Was nach Knall und Behauchung vom Vokal übrig bleibt („ə“ von „trinken“: 15 ms → „Ka-“)
+    const eff = p => Math.max(0.005, (p.e - p.s) - (isVowel(p.t) ? Math.max(p.burstIn ?? 0, p.voiceOn ?? 0) : 0));
+    const durC = p => W.durDev * 0.5 * Math.abs(Math.log(eff(p) / expDur)) + (isVowel(T.t) && eff(p) < 0.03 ? W.shortVowel : 0);
     // Linke Hälfte eines Verschlusslauts ist Stille – ihr linker Nachbar zählt kaum
     // Behauchter Anfang taugt nicht, wo im Ziel kein stimmloser Verschluss davorsteht
     // (fast ganz stimmlos: so gut wie unbrauchbar)
@@ -526,7 +532,11 @@ function selectOnce(src, tgt, K, constrain, cuts, only, pen) {
       + (p.burstIn > p.mid - p.s && canon(p.prevT) !== canon(T.prevT) ? 2 * W.burstLeak : 0)
       + (p.burstIn && isVowel(T.t) && canon(p.prevT) !== canon(T.prevT)
         ? (p.burstIn > 0.5 * (p.e - p.s) ? 4 * W.burstLeak : p.e - p.s < W.shortV ? W.burstLeak : 0) : 0);
-    const R = cands.map(({ p, base }) => ({ p, tc: base + vk(p.nextT, T.nextT) * ctxCost(p.nextT, T.nextT) + conf(p) + stressC(p) + wordB(p) + durC(p) + extra(p) + leakR(p) }));
+    // Verschluss, der im Ziel hörbar gelöst wird (vor Vokal/Sonor): Die Quelle braucht einen
+    // Knall – ungelöste („sind|Pinguine“, „Un-ter“ ohne Knall) klingen verschluckt
+    const released = STOPS.test(T.t) && T.nextT && !STOPS.test(T.nextT);
+    const relC = p => (!released ? 0 : (!p.burst ? W.noRelease : 0) + (p.nextT && STOPS.test(p.nextT) ? W.noRelease : 0));
+    const R = cands.map(({ p, base }) => ({ p, tc: base + relC(p) + vk(p.nextT, T.nextT) * ctxCost(p.nextT, T.nextT) + conf(p) + stressC(p) + wordB(p) + durC(p) + extra(p) + leakR(p) }));
     steps.push(L, R);
   }
   // Beschneiden, aber Fortsetzungen erhalten (sonst gingen ganze Wörter verloren)
@@ -619,11 +629,11 @@ export function plan(src, tgt, chosen) {
     else {
       // Stand in der Quelle ein stimmloser Verschluss davor, ist der Anfang dieses
       // Lauts noch behaucht: erst dort einsetzen, wo die Stimme beginnt.
-      const Tp = tgt.phones[(st >> 1) - 1];
-      const Tq = st % 2 === 0 ? Tp : T;            // was im Ziel vor dieser Lauthälfte steht
       // ebenso nach dem Knall eines Verschlusses („g“ am Anfang von „ən“ aus „Augen“)
       const onset = p.s + Math.max(p.voiceOn ?? 0, p.burstIn ? p.burstIn + 0.012 : 0);
-      const skip = (p.voiceOn > 0 || p.burstIn > 0) && a < onset && (st % 2 === 1 || Tq?.t !== src.phones[p.i - 1]?.t) ? Math.max(0, Math.min(onset - a, b - a - 0.01)) : 0;
+      // (auch wenn im Ziel derselbe Verschluss davorsteht: der kommt dann aus einem anderen
+      // Stück und bringt seinen eigenen Knall mit – sonst knallt es doppelt)
+      const skip = (p.voiceOn > 0 || p.burstIn > 0) && a < onset ? Math.max(0, Math.min(onset - a, b - a - 0.01)) : 0;
       segs.push({ start: a + skip, end: b, parts: [st], pauseAfter: 0, locE: p.locE });
     }
     if (st % 2 === 1 && T.pauseAfter) segs.at(-1).pauseAfter = T.pauseAfter;
