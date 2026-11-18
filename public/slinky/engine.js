@@ -807,8 +807,7 @@ export function render(src, segs, { xfade = 0.008, search = 0.006, naive = false
   /** Pause der Länge len: Ausklang des vorigen Stücks → Raumklang → Vorlauf des nächsten. */
   function pause(len, prevEnd, nextStart, s1, lastT = '', nextGain = 1, prevSeg = null, nextSeg = null) {
     const PB = prevSeg?.buf ?? A, NB = nextSeg?.buf ?? A;
-    const n = Math.round(len * SR), rt = roomTone(src, len), buf = new Float32Array(n);
-    for (let i = 0; i < n; i++) buf[i] = A[rt + i] ?? 0;
+    const n = Math.round(len * SR), buf = roomFill(src, n);
     if (prevEnd != null) {
       const gap = gapAfter(prevEnd);
       // Ausklang: aus der Quelle, wenn dort auch eine Pause folgt, sonst nachgebildet
@@ -872,8 +871,8 @@ export function render(src, segs, { xfade = 0.008, search = 0.006, naive = false
     if (seg.pauseAfter) {
       if (naive) {
         for (let i = 0; i < X; i++) out.push(tail[i] * (1 - i / X));
-        const n = Math.round(seg.pauseAfter * SR), rt = roomTone(src, seg.pauseAfter);
-        for (let i = 0; i < n; i++) out.push((A[rt + i] ?? 0) * Math.min(1, i / F, (n - i) / F));
+        const n = Math.round(seg.pauseAfter * SR), rt = roomFill(src, n);
+        for (let i = 0; i < n; i++) out.push(rt[i] * Math.min(1, i / F, (n - i) / F));
       } else pause(seg.pauseAfter, seg.end, segs[k + 1]?.start, s1, seg.lastT, segs[k + 1] ? segGain(segs[k + 1]) : 1, seg, segs[k + 1]);
       tail = null;
     }
@@ -923,6 +922,40 @@ function roomTone(src, len) {
   const long = src._gaps.filter(g => g.b - g.a >= len);
   const g = long.length ? long[Math.floor(long.length * 0.2)] : src._gaps.reduce((x, y) => (y.b - y.a > x.b - x.a ? y : x));
   return Math.round(((g.a + g.b) / 2 - len / 2) * 48000);
+}
+
+/**
+ * Raumklang für eine Pause von n Samples: die leiseste gleichmäßige Lücke der Quelle, in einer
+ * Schleife mit Überblendung (früher wurde bei langen Pausen über die Lücke hinaus gelesen – dann
+ * klangen Atmer und Wortreste mit) und höchstens 40 dB unter der Sprache (in getrennter Stimme
+ * sind Lücken oft voller Reste der Musik).
+ */
+function roomFill(src, n) {
+  const A = src.a48, SR = 48000, out = new Float32Array(n);
+  if (!src._room) {
+    try { roomTone(src, 0.1); } catch { src._gaps ??= []; }
+    const g = src._gaps.find(x => x.b - x.a >= 0.2);
+    const rms = (a, b) => { let e = 0; for (let i = a; i < b; i++) e += A[i] * A[i]; return Math.sqrt(e / Math.max(1, b - a)); };
+    const vow = src.phones.filter(p => isVowel(p.t) && p.e - p.s > 0.05), step = Math.max(1, Math.floor(vow.length / 200));
+    let ref = 0, k = 0;
+    for (let i = 0; i < vow.length; i += step, k++) ref += rms(Math.round(vow[i].s * SR), Math.round(vow[i].e * SR));
+    ref /= Math.max(1, k);
+    if (!g) src._room = { a: 0, len: 0, gain: 0 };
+    else {
+      const a = Math.round(g.a * SR), len = Math.round((g.b - g.a) * SR), r = rms(a, a + len);
+      src._room = { a, len, gain: r > 0 ? Math.min(1, (ref * 0.01) / r) : 0 };
+    }
+  }
+  const { a, len, gain } = src._room;
+  if (!len || !gain) return out;
+  const X = Math.min(Math.round(0.04 * SR), len >> 2);
+  for (let pos = 0; pos < n; pos += len - X) {
+    for (let i = 0; i < len && pos + i < n; i++) {
+      const w = pos > 0 && i < X ? i / X : 1;
+      out[pos + i] = out[pos + i] * (1 - w) + (A[a + i] ?? 0) * gain * w;
+    }
+  }
+  return out;
 }
 
 /** 16-bit-PCM-WAV als ArrayBuffer. */

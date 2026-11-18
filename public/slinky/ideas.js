@@ -22,7 +22,7 @@ What makes a good YTP line:
 - near-miss words: change or add one sound of a word the speaker says to get a ruder or sillier one ("hinten" → "Hintern", "Wurzeln" → "Wurst", "pan" → "pants"). The tool builds these well, because almost all of their sounds are already there. This is one of the best YTP tricks: use it in several lines.
 - real sentences: grammatical (articles, endings and word order right), so the listener understands the joke at once. Absurd content, correct form. A garbled word salad is not funny.
 - no stutter loops ("die die die") – they rarely work
-- timing: a dramatic pause before the punchline sells it. Write "…" where the speaker should stop for a moment before the last word or phrase ("Und dann kam die Beute … Scheiße."). The tool turns "…" into a real pause. Use it in at most two lines out of ten – most jokes work better without it.
+- timing: a dramatic pause before the punchline sells it. Write "…" where the speaker should stop for a moment before the last word or phrase ("Und dann kam die Beute … Scheiße."). The tool turns "…" into a real pause. Use it in at most one line out of ten, and only when the punchline really needs the wait – almost all jokes work better without it.
 - contrast: a long, serious, complicated build-up followed by something very short and stupid
 Short and punchy beats long. Do not explain jokes. Every line must be different in structure and joke – not ten variations of one idea. Make at least half of them rude, gross or profane: YTP is not polite. Skip lines that are merely odd: if a line would not make a teenager laugh or groan, drop it.
 
@@ -166,7 +166,7 @@ Look for:
 
 Rules:
 - "quote": the passage exactly as it stands in the transcript, consecutive words from one sentence, 2 to 20 words. Copy it letter by letter.
-- "edit": the minimally changed version (the fewer changes, the better – keep the speaker's own words and melody), or "" if the quote is funny as it is. It must differ in words from the quote (cut short, swapped, dropped or added words). A "…" for a dramatic pause before the punchline may be added to such an edit.
+- "edit": the minimally changed version (the fewer changes, the better – keep the speaker's own words and melody), or "" if the quote is funny as it is. It must differ in words from the quote (cut short, swapped, dropped or added words). Do not add pauses or "…": the joke must work through the words alone.
 - "why": at most 8 words.
 Order funniest first. Keep it obvious parody. No slurs against groups of people, nothing sexual involving children.`;
 
@@ -254,7 +254,7 @@ What makes a good YTP story:
 The picture cannot be changed – it can only be cut, reordered and reinterpreted. Every idea must work with what is really visible in the passages it uses: the narrator claims that something else is going on in the same shots. Never require animals, people, objects, places or actions that are not in the video (no "the penguin opens a restaurant" when no restaurant is shown, no "the lion kisses the antelope" when that is not filmed).
 
 Example of the level we want (a cooking show, not your material). Premise: the chef is secretly in love with the onion.
-orig "Now we take a fresh onion." – edit "Now we take a fresh onion … home." – orig "Gently stroke it with the knife." (now it sounds tender) – edit "I love the onion more than my wife." – orig "It needs a little more heat." (now innuendo) – edit "The onion is dead. Add salt."
+orig "Now we take a fresh onion." – edit "Now we take the fresh onion home." – orig "Gently stroke it with the knife." (now it sounds tender) – edit "I love the onion more than my wife." – orig "It needs a little more heat." (now innuendo) – edit "The onion is dead. Add salt."
 
 It must be easy to build: the editor can only use what the speaker really says, and the picture comes with the sound. So:
 - most scenes are original passages as they are ("orig") or with a tiny edit ("edit": one to three words swapped, dropped or added, or cut short). Then picture, lips and melody fit by themselves.
@@ -262,7 +262,7 @@ It must be easy to build: the editor can only use what the speaker really says, 
 - completely new lines ("new") only where the story needs them, at most a quarter of the scenes, 2 to 10 words, made of words exactly as they appear in the transcript (at most one other word). Glue chunks of one to three words from the transcript; real grammatical sentences.
 - every "new" line names a passage whose picture fits it (what should be seen while it is said).
 - use a gold clip only if it fits this story's subject and the scene before and after it; usually one or two, never just to use them all.
-- a dramatic pause "…" in at most one scene, right before the final punchline word.
+- no dramatic pauses ("…"), unless the final punchline really needs one – then at most once.
 
 The transcript was made by speech recognition and has spelling mistakes; in the video the words sound normal, so a misspelling is never a joke.
 Keep it obvious parody. No slurs against groups of people, nothing sexual involving children.`;
