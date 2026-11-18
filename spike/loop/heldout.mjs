@@ -112,7 +112,11 @@ for (const [name, v] of Object.entries(variants)) {
   const rows = [];
   for (const [k, s] of test.entries()) {
     // v.blocks: nur jede n-te Minute der Quelle (wie viel bringt mehr Material?)
-    const only = p => (src.words[p.w].spk ?? 0) === 0 && !(p.s < s.t1 + 0.3 && p.e > s.t0 - 0.3) && (!v.blocks || Math.floor(p.s / 60) % v.blocks === 0);
+    // HARD=1: auch alle anderen Vorkommen der Zielwörter sperren – jedes Wort muss gebaut werden
+    const norm = w => w.toLowerCase().replace(/[^\p{L}]/gu, '');
+    const tw = new Set(s.text.split(/\s+/).map(norm));
+    const only = p => (src.words[p.w].spk ?? 0) === 0 && !(p.s < s.t1 + 0.3 && p.e > s.t0 - 0.3) && (!v.blocks || Math.floor(p.s / 60) % v.blocks === 0)
+      && !(process.env.HARD && tw.has(norm(src.words[p.w].w)));
     const tgt = targetPhones(s.text, lang, lex, src);
     const { constrain } = wholeWords(src, tgt, only);
     const { chosen } = select(src, tgt, 250, constrain, 'all', only);

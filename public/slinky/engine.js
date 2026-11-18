@@ -47,6 +47,7 @@ export const W = {
   codaPos: 1,            // Anteil von wpos, wenn beide im Silbenendrand stehen und sich nur Wortende/Wortinneres unterscheidet
   boundVowelOnly: 1,     // Grenztyp nur am Vokal der letzten Silbe prüfen
   vowelCtx: 2.5,
+  cutInSyl: 0,           // Aufschlag für Schnitte innerhalb einer Silbe des Ziels
   consVctx: 3,           // Konsonant neben anderem Vokal als im Ziel: Faktor auf die Kontextkosten
   lenSwap: 2.5,          // gleicher Vokal, andere Länge (o/oː); die Dauer bewertet durDev zusätzlich
   vowelSwap: 8,        // anderer Vokal derselben Klasse (ɔ statt oː, ɛ statt eː)
@@ -464,7 +465,7 @@ const inPlace = (p, T) => canon(p.prevT ?? '') === canon(T.prevT ?? '') && canon
 const vowelKey = (src, p) => p.vkey ??= `${wordKey(src.words[p.w].w)}#${p.i - src.words[p.w].ps}`;
 
 function selectOnce(src, tgt, K, constrain, cuts, only, pen, prefer) {
-  const syl = cuts === 'syll' ? syllableBounds(tgt.phones) : null;
+  const syl = cuts === 'syll' || W.cutInSyl ? syllableBounds(tgt.phones) : null;
   const BAN = 25;                                   // „verboten“, aber nicht unmöglich
   // Phantome aussortieren: Laute, die das Alignment erzwungen hat, die das Modell aber nicht hört.
   // `only`: zusätzlich nur bestimmte Laute (z. B. die eines Sprechers)
@@ -573,7 +574,7 @@ function selectOnce(src, tgt, K, constrain, cuts, only, pen, prefer) {
       if (isVowel(t)) c += W.midVowel; else if (/^[mnŋlrʁɾ]$/.test(t)) c += W.midSonorant;
       c += W.near * Math.min(1, Math.log10(1 + Math.abs(a.p.mid - b.p.mid)) / 2);
       if (dur < min) c += W.dur * (min - dur) / min;
-      return c;
+      return c + W.cutInSyl;
     }
     const T = tgt.phones[st / 2 - 1];
     if (!T.pauseAfter && a.p.next === b.p.i) return T.w !== tgt.phones[st / 2].w ? -W.chain : 0;
@@ -589,6 +590,8 @@ function selectOnce(src, tgt, K, constrain, cuts, only, pen, prefer) {
     c += m * (an ? featDist(an.F.s, b.p.F.s) : 1.5);
     c += m * (bp ? featDist(bp.F.e, a.p.F.e) : 1.5);
     c += W.near * Math.min(1, Math.log10(1 + Math.abs(a.p.e - b.p.s)) / 2);
+    // Schnitt innerhalb einer Silbe des Ziels (ganze Silben klingen natürlicher als Einzellaute)
+    if (W.cutInSyl && !syl.has(st / 2)) c += W.cutInSyl;
     return c;
   }
 
