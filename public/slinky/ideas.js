@@ -247,13 +247,15 @@ What makes a good YTP story:
 - a running gag that comes back and escalates, and a punchline at the end
 - contrast: real, serious passages as setup, then the twist
 - rude, crude and toilet humour are welcome; YTP is not polite
+- coherent: heard in order, the scenes tell one story, like a narrator would – each scene follows from the one before (same subject, cause and effect, a callback), not a list of separate jokes. Every scene serves the premise.
+- stay in one or two sequences of the video (the same animal, place or event) and mostly follow their original order: then topic and picture stay together and the viewer can follow
 
 It must be easy to build: the editor can only use what the speaker really says, and the picture comes with the sound. So:
 - most scenes are original passages as they are ("orig") or with a tiny edit ("edit": one to three words swapped, dropped or added, or cut short). Then picture, lips and melody fit by themselves.
 - the narration tells what is on screen at that moment. Build the story around passages whose picture (what the narrator talks about there) carries the joke.
 - completely new lines ("new") only where the story needs them, at most a quarter of the scenes, 2 to 10 words, made of words exactly as they appear in the transcript (at most one other word). Glue chunks of one to three words from the transcript; real grammatical sentences.
 - every "new" line names a passage whose picture fits it (what should be seen while it is said).
-- use gold clips where they fit the story (by number); do not force them in.
+- use a gold clip only if it fits this story's subject and the scene before and after it; usually one or two, never just to use them all.
 - a dramatic pause "…" in at most one scene, right before the final punchline word.
 
 The transcript was made by speech recognition and has spelling mistakes; in the video the words sound normal, so a misspelling is never a joke.
@@ -272,7 +274,7 @@ export async function storyPitches({ key, model = DEFAULT_MODEL, words, lang, to
 Suggest ${count} different story ideas for a YTP of about one minute. Each needs a different kind of joke; at least two are rude. Each must be easy to build from this footage (mostly original passages and tiny edits).
 - "title": at most 6 words
 - "premise": one or two sentences: what happens, the running gag and the punchline
-- "why": at most 15 words: which passages or pictures it builds on
+- "why": at most 15 words: which passages or pictures it builds on – name sentences as #12 or #12–15 and gold clips as G2
 Reply as JSON: {"pitches": [{"title": "…", "premise": "…", "why": "…"}]}
 ${goldText(gold)}
 Transcript:
@@ -314,8 +316,11 @@ export async function writeStory({ key, model = DEFAULT_MODEL, words, lang, pitc
   const scenes = [];
   const take = x => { const s = normScene(x, words, gold); if (s) { scenes.push(s); onScene?.(s, scenes.length - 1); } };
   const r = await askOpenRouter({ key, model, messages, fetchFn, onItem: onScene ? take : null, onPhase });
-  if (!onScene) { try { for (const x of JSON.parse(r.content.replace(/^```(?:json)?|```$/gm, '').trim()).scenes ?? []) take(x); } catch { /* nichts */ } }
-  return { scenes, messages, content: r.content, cost: r.usage?.cost ?? 0 };
+  let j = {};
+  try { j = JSON.parse(r.content.replace(/^```(?:json)?|```$/gm, '').trim()); } catch { j = {}; }
+  if (!onScene) for (const x of j.scenes ?? []) take(x);
+  const outline = typeof j.outline === 'string' ? j.outline.slice(0, 800) : '';
+  return { scenes, outline, messages, content: r.content, cost: r.usage?.cost ?? 0 };
 }
 
 /** Szene → so, wie das Modell sie schreibt (für den Verlauf bei Nachbesserungen). */
@@ -331,13 +336,14 @@ export function storyMessages({ words, lang, pitch, gold = [], length = 'medium'
     { role: 'user', content: `Language: ${language}.
 Story: ${pitch.title ? `"${pitch.title}" – ` : ''}${pitch.premise}
 Write the script: ${a} to ${b} scenes in order. About a third are original passages as setup and context; most of the rest are tiny edits; few new lines.
+First write "outline": three to five short sentences telling the whole story in order, so that it makes sense as one story. Then the scenes, which tell exactly this outline.
 Each scene:
 - "kind": "orig" | "edit" | "gold" | "new"
 - "quote": orig: the passage exactly as it stands in the transcript (consecutive words of one sentence, 3 to 25 words, letter by letter); edit: the passage being edited (same rules); new: a passage whose picture fits this line (same rules); gold: ""
 - "text": edit and new: what the speaker should say; orig and gold: ""
 - "gold": gold: its number (e.g. 2); otherwise ""
 - "beat": at most 6 words: what the scene does in the story (setup, running gag, escalation, punchline …)
-Reply as JSON: {"scenes": [{"kind": "…", "quote": "…", "text": "…", "gold": "…", "beat": "…"}]}
+Reply as JSON: {"outline": "…", "scenes": [{"kind": "…", "quote": "…", "text": "…", "gold": "…", "beat": "…"}]}
 ${goldText(gold)}
 Transcript:
 ${text}` },
@@ -350,7 +356,7 @@ ${text}` },
  */
 export async function fixScenes({ key, model = DEFAULT_MODEL, words, gold = [], messages, content, weak, fetchFn = fetch, onPhase }) {
   const list = weak.map(w => `Scene ${w.n}${w.text ? ` ("${w.text}")` : ''}: ${w.why}`).join('\n');
-  const msgs = [...messages, { role: 'assistant', content }, { role: 'user', content: `Replace these scenes with something that fits the same spot in the story and is easier to build (prefer an original passage or a tiny edit of one; new words exactly as in the transcript):
+  const msgs = [...messages, { role: 'assistant', content }, { role: 'user', content: `Replace these scenes. Keep each scene's role in the story and its joke – do not fall back to the plain original. Make it easier to build: other words for the same joke (a near-miss word of one the speaker says, words exactly as in the transcript), or a tiny edit of a different passage with a fitting picture. If the editor wants another version, write a different joke for the same spot:
 ${list}
 Reply as JSON: {"scenes": [{"replace": <scene number>, "kind": "…", "quote": "…", "text": "…", "gold": "…", "beat": "…"}]}` }];
   const r = await askOpenRouter({ key, model, messages: msgs, fetchFn, onPhase });
