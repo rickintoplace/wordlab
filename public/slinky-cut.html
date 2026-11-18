@@ -169,13 +169,15 @@
                 <div class="sc-row">
                   <button type="button" class="pill-button sc-pill" id="ideas-go" hidden><span data-icon="sparkles" data-icon-size="14px"></span> Get ideas</button>
                   <button type="button" class="pill-button sc-pill" id="finds-go" title="Let the model look through everything they say for passages that are funny as they are, or with a tiny edit"><span data-icon="zoom" data-icon-size="14px"></span> Find gold</button>
+                  <button type="button" class="pill-button sc-pill" id="story-go" title="Let the model suggest short stories that can be built from this video, then write the scenes"><span data-icon="sparkles" data-icon-size="14px"></span> Write a story</button>
                   <span class="sc-note" id="ideas-status"></span>
                 </div>
-                <p class="sc-note">Finds passages that are funny as they are or with a tiny edit. Only the transcript goes to OpenRouter; your key stays here (<span title="openrouter.ai/keys">get one at openrouter.ai</span>).</p>
+                <p class="sc-note">Finds funny passages, or plans a short story from them. Only the transcript goes to OpenRouter; your key stays here (<span title="openrouter.ai/keys">get one at openrouter.ai</span>).</p>
               </div>
               <div class="sc-bintabs" id="bintabs" role="tablist" hidden>
                 <button type="button" role="tab" data-tab="cut" aria-selected="true">Sentences <span></span></button>
                 <button type="button" role="tab" data-tab="gold" aria-selected="false" title="What you keep: saved sentences, words and finds. Drag things here to save them."><i class="sc-tabstar" data-icon="star" data-icon-size="13px"></i> Gold <span></span></button>
+                <button type="button" role="tab" data-tab="story" aria-selected="false" title="A short story from this video: ideas, then scenes you can place on the timeline in one go">Story <span></span></button>
               </div>
               <ol class="sc-bin" id="bin" hidden aria-label="Your sentences"></ol>
             </form>

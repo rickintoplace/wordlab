@@ -236,6 +236,131 @@ ${text}` },
   return { finds, cost: usage?.cost ?? 0, asked };
 }
 
+// ---------------------------------------------------------------- Drehbuch
+// Eine kleine YTP-Geschichte aus dem Material: erst Ideen (Prämissen), dann Szenen. Leicht zu
+// bauen heißt: fast alles ist Originalton oder ein kleiner Eingriff darin – dann passen Bild
+// und Melodie von selbst. Neue Sätze nennen die Stelle, deren Bild dazu passt.
+const STORY = `You help with YouTube Poop (YTP) sentence mixing. You get the transcript of a video, split into numbered sentences, and maybe a list of "gold" clips the editor already likes. You plan a short YTP that tells one coherent, absurd story with the footage.
+
+What makes a good YTP story:
+- one clear premise that twists what the video is really about (its real subjects, places and events), told in the calm original voice: the more serious the footage, the dumber the story
+- a running gag that comes back and escalates, and a punchline at the end
+- contrast: real, serious passages as setup, then the twist
+- rude, crude and toilet humour are welcome; YTP is not polite
+
+It must be easy to build: the editor can only use what the speaker really says, and the picture comes with the sound. So:
+- most scenes are original passages as they are ("orig") or with a tiny edit ("edit": one to three words swapped, dropped or added, or cut short). Then picture, lips and melody fit by themselves.
+- the narration tells what is on screen at that moment. Build the story around passages whose picture (what the narrator talks about there) carries the joke.
+- completely new lines ("new") only where the story needs them, at most a quarter of the scenes, 2 to 10 words, made of words exactly as they appear in the transcript (at most one other word). Glue chunks of one to three words from the transcript; real grammatical sentences.
+- every "new" line names a passage whose picture fits it (what should be seen while it is said).
+- use gold clips where they fit the story (by number); do not force them in.
+- a dramatic pause "…" in at most one scene, right before the final punchline word.
+
+The transcript was made by speech recognition and has spelling mistakes; in the video the words sound normal, so a misspelling is never a joke.
+Keep it obvious parody. No slurs against groups of people, nothing sexual involving children.`;
+
+const goldText = gold => (gold?.length ? `\nGold clips the editor likes (use by number where they fit):\n${gold.map((g, i) => `G${i + 1}: "${g.text}"${g.note ? ` (${g.note.slice(0, 80)})` : ''}`).join('\n')}\n` : '');
+export const STORY_LENGTHS = { short: [5, 7], medium: [8, 12], long: [13, 18] };
+
+/** Ideen für eine Geschichte. → { pitches: [{title, premise, why}], cost } */
+export async function storyPitches({ key, model = DEFAULT_MODEL, words, lang, topic = '', gold = [], count = 4, fetchFn = fetch, onPitch = null, onPhase }) {
+  const { text } = transcriptSentences(words);
+  const language = lang === 'de' ? 'German' : 'English';
+  const messages = [
+    { role: 'system', content: STORY },
+    { role: 'user', content: `Language of the video: ${language}. Write titles and premises in ${language} too.${topic ? `\nThe editor's wish: ${topic}` : ''}
+Suggest ${count} different story ideas for a YTP of about one minute. Each needs a different kind of joke; at least two are rude. Each must be easy to build from this footage (mostly original passages and tiny edits).
+- "title": at most 6 words
+- "premise": one or two sentences: what happens, the running gag and the punchline
+- "why": at most 15 words: which passages or pictures it builds on
+Reply as JSON: {"pitches": [{"title": "…", "premise": "…", "why": "…"}]}
+${goldText(gold)}
+Transcript:
+${text}` },
+  ];
+  const pitches = [];
+  const take = p => { if (p && typeof p.premise === 'string') { const x = { title: String(p.title ?? '').slice(0, 80), premise: p.premise.slice(0, 400), why: String(p.why ?? '').slice(0, 160) }; pitches.push(x); onPitch?.(x); } };
+  const { content, usage } = await askOpenRouter({ key, model, messages, fetchFn, onItem: onPitch ? take : null, onPhase });
+  if (!onPitch) { try { for (const p of JSON.parse(content.replace(/^```(?:json)?|```$/gm, '').trim()).pitches ?? []) take(p); } catch { /* nichts */ } }
+  return { pitches, cost: usage?.cost ?? 0 };
+}
+
+/** Rohe Szene des Modells → geprüfte Szene (Zitat im Transkript gefunden, Text bereinigt) oder null. */
+export function normScene(x, words, gold = []) {
+  if (!x || typeof x !== 'object') return null;
+  const kind = ['orig', 'edit', 'gold', 'new'].includes(x.kind) ? x.kind : null;
+  if (!kind) return null;
+  const beat = String(x.beat ?? '').slice(0, 60);
+  if (kind === 'gold') {
+    const n = parseInt(String(x.gold ?? '').replace(/\D/g, ''), 10);
+    return gold[n - 1] ? { kind, gold: n - 1, beat } : null;
+  }
+  const quote = typeof x.quote === 'string' ? x.quote.trim() : '';
+  const idx = quote ? locateQuote(words, quote) : null;
+  const text = typeof x.text === 'string' ? x.text.trim() : '';
+  if (kind === 'orig') return idx ? { kind, idx, quote: idx.map(i => words[i].w).join(' '), beat } : null;
+  if (!text) return null;
+  // Bearbeitung ohne auffindbares Zitat: als neuer Satz (ohne eigenes Bild)
+  if (kind === 'edit') return idx ? { kind, idx, quote: idx.map(i => words[i].w).join(' '), text, beat } : { kind: 'new', idx: null, quote: '', text, beat };
+  return { kind, idx, quote: idx ? idx.map(i => words[i].w).join(' ') : '', text, beat };
+}
+
+/**
+ * Drehbuch zu einer Idee. Szenen kommen gestreamt (onScene) und schon geprüft.
+ * → { scenes, messages, content, cost }  (messages/content für Nachbesserungen)
+ */
+export async function writeStory({ key, model = DEFAULT_MODEL, words, lang, pitch, gold = [], length = 'medium', fetchFn = fetch, onScene = null, onPhase }) {
+  const messages = storyMessages({ words, lang, pitch, gold, length });
+  const scenes = [];
+  const take = x => { const s = normScene(x, words, gold); if (s) { scenes.push(s); onScene?.(s, scenes.length - 1); } };
+  const r = await askOpenRouter({ key, model, messages, fetchFn, onItem: onScene ? take : null, onPhase });
+  if (!onScene) { try { for (const x of JSON.parse(r.content.replace(/^```(?:json)?|```$/gm, '').trim()).scenes ?? []) take(x); } catch { /* nichts */ } }
+  return { scenes, messages, content: r.content, cost: r.usage?.cost ?? 0 };
+}
+
+/** Szene → so, wie das Modell sie schreibt (für den Verlauf bei Nachbesserungen). */
+export const rawScene = (s, gold = []) => ({ kind: s.kind, quote: s.quote ?? '', text: s.text ?? '', gold: s.kind === 'gold' ? String((s.gold ?? 0) + 1) : '', beat: s.beat ?? '' });
+
+/** Die Anfrage für ein Drehbuch (auch, um später einzelne Szenen nachzubessern). */
+export function storyMessages({ words, lang, pitch, gold = [], length = 'medium' }) {
+  const { text } = transcriptSentences(words);
+  const language = lang === 'de' ? 'German' : 'English';
+  const [a, b] = STORY_LENGTHS[length] ?? STORY_LENGTHS.medium;
+  return [
+    { role: 'system', content: STORY },
+    { role: 'user', content: `Language: ${language}.
+Story: ${pitch.title ? `"${pitch.title}" – ` : ''}${pitch.premise}
+Write the script: ${a} to ${b} scenes in order. About a third are original passages as setup and context; most of the rest are tiny edits; few new lines.
+Each scene:
+- "kind": "orig" | "edit" | "gold" | "new"
+- "quote": orig: the passage exactly as it stands in the transcript (consecutive words of one sentence, 3 to 25 words, letter by letter); edit: the passage being edited (same rules); new: a passage whose picture fits this line (same rules); gold: ""
+- "text": edit and new: what the speaker should say; orig and gold: ""
+- "gold": gold: its number (e.g. 2); otherwise ""
+- "beat": at most 6 words: what the scene does in the story (setup, running gag, escalation, punchline …)
+Reply as JSON: {"scenes": [{"kind": "…", "quote": "…", "text": "…", "gold": "…", "beat": "…"}]}
+${goldText(gold)}
+Transcript:
+${text}` },
+  ];
+}
+
+/**
+ * Ersatz für Szenen, die sich nicht sauber schneiden lassen (oder die der Nutzer neu will).
+ * weak = [{n (1-basiert), text, why}] → { scenes: [{n, scene}], cost }
+ */
+export async function fixScenes({ key, model = DEFAULT_MODEL, words, gold = [], messages, content, weak, fetchFn = fetch, onPhase }) {
+  const list = weak.map(w => `Scene ${w.n}${w.text ? ` ("${w.text}")` : ''}: ${w.why}`).join('\n');
+  const msgs = [...messages, { role: 'assistant', content }, { role: 'user', content: `Replace these scenes with something that fits the same spot in the story and is easier to build (prefer an original passage or a tiny edit of one; new words exactly as in the transcript):
+${list}
+Reply as JSON: {"scenes": [{"replace": <scene number>, "kind": "…", "quote": "…", "text": "…", "gold": "…", "beat": "…"}]}` }];
+  const r = await askOpenRouter({ key, model, messages: msgs, fetchFn, onPhase });
+  let raw = [];
+  try { raw = JSON.parse(r.content.replace(/^```(?:json)?|```$/gm, '').trim()).scenes ?? []; } catch { raw = []; }
+  const out = [];
+  for (const x of raw) { const n = parseInt(x?.replace, 10), s = normScene(x, words, gold); if (n && s) out.push({ n, scene: s }); }
+  return { scenes: out, cost: r.usage?.cost ?? 0 };
+}
+
 /**
  * Welche Wörter der Bearbeitung sind unverändert aus dem Zitat? (längste gemeinsame
  * Teilfolge nach Schreibung) → Map: Wortposition in edit → Position im Zitat

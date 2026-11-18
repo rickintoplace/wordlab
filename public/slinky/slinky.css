@@ -509,3 +509,21 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 
 #ideas-pick { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: .35rem .4rem; min-width: 0; }
 .sc-ideas-other { grid-column: 1 / -1; }
+
+/* Geschichte: Idee oben, darunter die Szenen in Reihenfolge (jede wie ein Listeneintrag) */
+.sc-story-head, .sc-story-pitch, .sc-story-opts { padding: .55rem .65rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); display: grid; gap: .45rem; }
+.sc-story-head { border-color: color-mix(in srgb, var(--c-onset-1) 45%, var(--line)); }
+.sc-story-head p, .sc-story-pitch p { margin: 0; font-size: .88rem; line-height: 1.45; }
+.sc-story-pitch .sc-act { justify-self: start; }
+.sc-story-opts { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; font-size: .85rem; }
+.sc-story-opts select { font: inherit; }
+.sc-story-scene { grid-template-areas: "top top top" "play line acts" "play wave acts"; }
+.sc-story-scene.pending { display: grid; gap: .3rem; padding: .5rem .65rem; border: 1px dashed var(--line); border-radius: 8px; }
+.sc-story-top { grid-area: top; display: flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--muted); min-width: 0; }
+.sc-story-n { font-weight: 800; color: var(--fg); font-variant-numeric: tabular-nums; }
+.sc-story-beat { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-story-warn { color: var(--c-rime-2); font-weight: 650; white-space: nowrap; }
+.sc-story-acts { display: flex; gap: .2rem; margin-left: auto; }
+.sc-flip svg { transform: rotate(180deg); }
+.sc-kind-orig { background: var(--c-rime-1); }
+.sc-kind-gold { background: var(--c-rime-2); }
