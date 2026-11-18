@@ -9,7 +9,7 @@
 
 import { parseLexicon, pronounceSync } from './g2p.js';
 import { alignWords } from './align.js';
-import { buildSource, targetPhones, select, plan, render, wholeWords, wordKey, syllableBounds, splitWords } from './engine.js';
+import { W, buildSource, targetPhones, select, plan, render, wholeWords, wordKey, syllableBounds, splitWords } from './engine.js';
 import { isVowel, soundClass, canon } from './phones.js';
 import * as cache from './cache.js';
 import { cleanMusic } from './dsp.js';
@@ -159,9 +159,9 @@ const bySpeaker = (src, speaker) => (speaker == null ? null : p => (src.words[p.
 
 /** Vorgaben vereinheitlichen: {words: {wi: …}, pins: {ti: Quelllaut}} (früher: nur Wörter). */
 function normForce(force = {}) {
-  if (force.words || force.pins || force.avoid || force.pauses)
-    return { words: { ...force.words }, pins: { ...force.pins }, avoid: { ...force.avoid }, pauses: { ...force.pauses } };
-  return { words: { ...force }, pins: {}, avoid: {}, pauses: {} };
+  if (force.words || force.pins || force.avoid || force.pauses || force.near)
+    return { words: { ...force.words }, pins: { ...force.pins }, avoid: { ...force.avoid }, pauses: { ...force.pauses }, near: { ...force.near } };
+  return { words: { ...force }, pins: {}, avoid: {}, pauses: {}, near: {} };
 }
 
 /**
@@ -178,6 +178,13 @@ function cut(text, speaker, force = {}) {
   const inst = Object.fromEntries(Object.entries(F.words).filter(([, f]) => typeof f === 'number' && f >= 0));
   const tgt = targetPhones(text, lang, lex, src, { inst, pauses: F.pauses });
   const { constrain, instances } = wholeWords(src, tgt, only);
+  // Bevorzugt aus der Herkunft des ersetzten Worts (sein Quellwort zählt doppelt)
+  const prefer = {};
+  for (const [w, h] of Object.entries(F.near)) {
+    if (!h) continue;
+    const [a, b, c, d] = h;
+    tgt.phones.forEach((p, ti) => { if (p.w === Number(w)) prefer[ti] = q => (q.i >= c && q.i <= d ? 2 * W.home : q.i >= a && q.i <= b ? W.home : 0); });
+  }
   const phonesOf = wi => tgt.phones.map((p, i) => (p.w === wi ? i : -1)).filter(i => i >= 0);
   // Gleicher Laut oder wenigstens gleiche Klasse – sonst klänge die Alternative nach einem anderen Wort
   const fits = (p, T) => canon(p.real) === canon(T.t) || p.t === T.t || p.cls === T.cls;
@@ -213,12 +220,12 @@ function cut(text, speaker, force = {}) {
       if (instances[wi]?.length || wi in F.words || phonesOf(wi).some(ti => ti in F.pins)) return;
       const sts = stems(tgt, wi, speaker, 3);
       if (!sts.length) return;
-      base ??= select(src, tgt, 250, constrain, 'all', only).total;
+      base ??= select(src, tgt, 250, constrain, 'all', only, prefer).total;
       let best = null;
       for (const st of sts.filter(x => x.near || x.L === sts[0].L || x.word === sts[0].word)) {
         const c = { ...constrain };
         for (const [ti, pi] of st.map) c[ti] = p => p.i === pi;
-        const t = select(src, tgt, 250, c, 'all', only).total;
+        const t = select(src, tgt, 250, c, 'all', only, prefer).total;
         // Minimalpaare („angepasst“ → „angefasst“) klangen im Hörtest klar besser als frei
         // gebaut, obwohl die Schnittkosten höher sind: großzügigere Grenze
         if (t - base > (st.near ? NEAR_MARGIN : STEM_MARGIN)) continue;
@@ -227,7 +234,22 @@ function cut(text, speaker, force = {}) {
       if (best) { Object.assign(constrain, best.c); base = best.t; }
     });
   }
-  const { chosen, stepCost, total } = select(src, tgt, 250, constrain, 'all', only);
+  // Umgeschriebenes Wort („Chameleons“ → „Kamele“): so viel wie möglich vom alten Wort an
+  // seiner Stelle behalten – Laute in derselben Reihenfolge, ein anderer Vokal ist erlaubt
+  // („Cha-mä-le“ für „Ka-me-le“). Nur, wenn das kaum schlechter passt als frei gebaut.
+  for (const [w, h] of Object.entries(F.near)) {
+    const wi = Number(w);
+    if (!h || globalThis.SLINKY_NO_HOME || phonesOf(wi).some(ti => ti in constrain || ti in F.pins)) continue;
+    const map = homeMap(tgt, wi, src.phones.slice(h[2], h[3] + 1));
+    if (!map) continue;
+    const free = select(src, tgt, 250, constrain, 'all', only, prefer).total;
+    const c = { ...constrain };
+    for (const [ti, pi] of map) c[ti] = p => p.i === pi;
+    const t = select(src, tgt, 250, c, 'all', only, prefer).total;
+    if (globalThis.SLINKY_DEBUG_HOME) console.log("home", wi, map.map(([ti, pi]) => tgt.phones[ti].t + "←" + src.phones[pi].real).join(" "), "frei", free.toFixed(1), "so", t.toFixed(1));
+    if (t - free <= NEAR_MARGIN) Object.assign(constrain, c);
+  }
+  const { chosen, stepCost, total } = select(src, tgt, 250, constrain, 'all', only, prefer);
   const segs = plan(src, tgt, chosen);
   const audio = render(src, segs);
   return { tgt, chosen, segs, audio, instances, force: F, stepCost, total };
@@ -340,7 +362,12 @@ function rewrite({ id, text, speaker, force, wi, replacement }) {
   const next = [...words.slice(0, wi), ...rep, ...words.slice(wi + 1)];
   if (!next.length) return { type: 'error', id, message: 'Nothing left to say.' };
   const d = rep.length - 1, mapW = k => (k < wi ? k : k > wi ? k + d : null);
-  const G = { words: {}, pins: {}, avoid: {}, pauses: {} };
+  const G = { words: {}, pins: {}, avoid: {}, pauses: {}, near: {} };
+  for (const [k, v] of Object.entries(F.near)) { const n = mapW(Number(k)); if (n != null) G.near[n] = v; }
+  // Wo stand das alte Wort in der Quelle? Das neue Wort nimmt bevorzugt Laute von dort und
+  // aus den Nachbarwörtern („Chameleons“ → „Kamele“: die Silben aus genau diesem Satz)
+  const home = homeOf(text, speaker, F, wi);
+  if (home) for (let k = 0; k < rep.length; k++) G.near[wi + k] = home;
   for (const [k, v] of Object.entries(F.words)) { const n = mapW(Number(k)); if (n != null) G.words[n] = v; }
   for (const [k, v] of Object.entries(F.pauses)) { const n = mapW(Number(k)); if (n != null) G.pauses[n] = v; else if (rep.length) G.pauses[wi + d] = v; }
   const newText = next.join(' ');
@@ -358,6 +385,50 @@ function rewrite({ id, text, speaker, force, wi, replacement }) {
   }
   const r = cut(newText, speaker, G);
   return { type: 'rewritten', id, text: newText, speaker, force: r.force, audio: r.audio, ...describe(r), wi: rep.length ? wi : -1 };
+}
+
+/**
+ * Laute des Zielworts wi den Lauten eines Quellworts zuordnen (Reihenfolge bleibt): gleicher
+ * Laut, gleiche Klasse oder Vokal gegen Vokal. → [[Zielindex, Quellindex]] oder null, wenn
+ * weniger als 60 % zusammenpassen.
+ */
+function homeMap(tgt, wi, S) {
+  const T = tgt.phones.map((p, ti) => [p, ti]).filter(([p]) => p.w === wi);
+  const n = T.length, m = S.length;
+  if (n < 3 || !m) return null;
+  // Vokal gegen Vokal nur, wo einer davon ein abgeschwächtes e ist (ə, ɐ, e, ɛ – „Cha-mä-le“ ≈ „Ka-me-le“)
+  const reduced = t => /^(ə|ɐ|ɜ|e|eː|ɛ|ɛː)$/.test(t);
+  const sc = (t, p) => (canon(p.real) === canon(t.t) ? 3 : p.cls === t.cls ? 2
+    : isVowel(t.t) && isVowel(p.real) && (reduced(t.t) && reduced(p.real)) ? 1 : -Infinity);
+  const D = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++)
+    D[i][j] = Math.max(D[i - 1][j], D[i][j - 1], D[i - 1][j - 1] + sc(T[i - 1][0], S[j - 1]));
+  const map = [];
+  for (let i = n, j = m; i > 0 && j > 0;) {
+    // bei Gleichstand frühere Quelllaute: so bleibt das Stück am Stück („Chamele“, nicht „Chamel…o“)
+    if (D[i][j] === D[i][j - 1]) j--;
+    else if (D[i][j] === D[i - 1][j - 1] + sc(T[i - 1][0], S[j - 1])) { map.unshift([T[i - 1][1], S[j - 1].i]); i--; j--; }
+    else i--;
+  }
+  return map.length >= 0.6 * n ? map : null;
+}
+
+/** Quellbereich (Laut-Indizes) des Worts wi im Satz und seiner Nachbarwörter in der Quelle. */
+function homeOf(text, speaker, F, wi) {
+  const { src } = current;
+  let si = typeof F.words[wi] === 'number' && F.words[wi] >= 0 ? F.words[wi] : null;
+  if (si == null) {
+    const r = cut(text, speaker, F);
+    const ps = r.tgt.phones.map((p, ti) => (p.w === wi ? r.chosen[2 * ti].p : null)).filter(Boolean);
+    if (!ps.length) return F.near[wi] ?? null;
+    // das Quellwort, aus dem die meisten Laute kamen
+    const n = new Map();
+    for (const p of ps) n.set(p.w, (n.get(p.w) ?? 0) + 1);
+    si = [...n].sort((a, b) => b[1] - a[1])[0][0];
+  }
+  const w0 = src.words[Math.max(0, si - 1)], w = src.words[si], w1 = src.words[Math.min(src.words.length - 1, si + 1)];
+  const a = [w0, w].find(x => x.ps >= 0)?.ps, b = [w1, w].find(x => x.pe >= 0)?.pe;
+  return a != null && b != null ? [a, b, w.ps, w.pe] : null;
 }
 
 /** Eine Alternative: Ton und Beschreibung, mit Signatur gegen Doppelte. */

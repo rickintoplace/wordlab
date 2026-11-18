@@ -49,6 +49,7 @@ export const W = {
   vowelCtx: 2.5,
   lenSwap: 1.0,          // gleicher Vokal, andere Länge (o/oː); die Dauer bewertet durDev zusätzlich
   vowelSwap: 4.0,        // anderer Vokal derselben Klasse (ɔ statt oː, ɛ statt eː)
+  home: 3.0,             // je Hälfte: Laut aus der Gegend des ersetzten Worts (beim Umschreiben)
   noRelease: 3.0,        // Verschlusslaut ohne Knall, wo das Ziel einen braucht
   shortVowel: 2.0,       // je Hälfte: vom Vokal bleiben nach Knall/Behauchung keine 30 ms
   shortV: 0.06,          // Vokal so kurz, dass der Knall des Verschlusses davor ihn ganz färbt (s)
@@ -430,14 +431,14 @@ export function syllableBounds(phones) {
 
 // cuts: 'all' (frei), 'mid' (nur in Lautmitten = Diphone), 'edge' (nur an Lautgrenzen),
 //       'syll' (nur an Silbengrenzen)
-export function select(src, tgt, K = 250, constrain = {}, cuts = 'all', only = null) {
+export function select(src, tgt, K = 250, constrain = {}, cuts = 'all', only = null, prefer = null) {
   // Derselbe Quellvokal an zwei Stellen verschiedener Wörter („Ha-se“ und „hat“ aus
   // demselben „hat“) klingt hörbar kopiert – ebenso derselbe Vokal desselben Worts aus
   // einem anderen Vorkommen. Dort, wo das Wort nicht ganz übernommen ist, verteuern
   const pen = new Map();
   let r;
   for (let round = 0; round < 3; round++) {
-    r = selectOnce(src, tgt, K, constrain, cuts, only, pen);
+    r = selectOnce(src, tgt, K, constrain, cuts, only, pen, prefer);
     const used = new Map();
     let found = false;
     r.chosen.forEach((c, st) => {
@@ -461,7 +462,7 @@ const inPlace = (p, T) => canon(p.prevT ?? '') === canon(T.prevT ?? '') && canon
 /** Welcher Vokal welchen Worts (ohne Vorkommen): „hat#1“. */
 const vowelKey = (src, p) => p.vkey ??= `${wordKey(src.words[p.w].w)}#${p.i - src.words[p.w].ps}`;
 
-function selectOnce(src, tgt, K, constrain, cuts, only, pen) {
+function selectOnce(src, tgt, K, constrain, cuts, only, pen, prefer) {
   const syl = cuts === 'syll' ? syllableBounds(tgt.phones) : null;
   const BAN = 25;                                   // „verboten“, aber nicht unmöglich
   // Phantome aussortieren: Laute, die das Alignment erzwungen hat, die das Modell aber nicht hört.
@@ -522,7 +523,8 @@ function selectOnce(src, tgt, K, constrain, cuts, only, pen) {
     const roleC = p => (p.srole && T.srole ? (T.srole !== 'N' && p.srole !== T.srole ? W.sylRole : 0)
       + (T.srole !== 'O' && p.slast !== T.slast ? W.sylLast : 0) : 0);
     const reuse = pen.get(i);
-    const extra = p => posC(p) + boundC(p) + roleC(p) + (reuse?.has(vowelKey(src, p)) ? W.reuse : 0);
+    const pref = prefer?.[i];
+    const extra = p => posC(p) + boundC(p) + roleC(p) + (reuse?.has(vowelKey(src, p)) ? W.reuse : 0) - (pref ? pref(p) : 0);
     const L = cands.map(({ p, base }) => ({ p, tc: base + lctx(p) + conf(p) + stressC(p) + wordB(p) + durC(p) + extra(p) }));
     // rechte Hälfte: nur, wenn die Behauchung bis in sie hineinreicht
     // … und bei kurzen Vokalen auch der Knall davor: dann klingt der ganze Vokal nach dem
