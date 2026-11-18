@@ -21,7 +21,7 @@ console.log(`Ideen (${sec()}, $${P.cost.toFixed(4)}):`);
 P.pitches.forEach((p, i) => console.log(`${i + 1}. ${p.title} – ${p.premise}  [${p.why}]`));
 const pitch = P.pitches[+pick - 1];
 const S = await writeStory({ key, model, words, lang: 'de', pitch, length: process.env.LENGTH ?? 'medium', fetchFn: realFetch });
-console.log(`\nDrehbuch „${pitch.title}“ (${sec()}, $${S.cost.toFixed(4)}):`);
+console.log(`\nDrehbuch „${pitch.title}“ (${sec()}, $${S.cost.toFixed(4)}):\nAblauf: ${S.outline}`);
 const weak = [];
 for (const [k, s] of S.scenes.entries()) {
   let cost = 0;

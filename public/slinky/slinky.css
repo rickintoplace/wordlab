@@ -527,3 +527,8 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .sc-flip svg { transform: rotate(180deg); }
 .sc-kind-orig { background: var(--c-rime-1); }
 .sc-kind-gold { background: var(--c-rime-2); }
+.sc-ref { font: inherit; font-weight: 650; color: var(--c-onset-1); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.sc-ref:hover { text-decoration-style: solid; }
+.sc-story-outline { font-size: .84rem; color: var(--muted); }
+.sc-story-outline summary { cursor: pointer; }
+.sc-story-outline p { margin: .3rem 0 0; }

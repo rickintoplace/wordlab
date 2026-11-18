@@ -18,9 +18,9 @@ export default async ({ page, shot, log, sleep }) => {
   await ev(`(() => {
     const answers = {
       pitches: { pitches: [
-        { title: 'Die Knochen-Diät', premise: 'Die Forscher finden heraus, dass Dinosaurier nur Knochen essen.', why: 'Knochenfund, Oberschenkel' },
+        { title: 'Die Knochen-Diät', premise: 'Die Forscher finden heraus, dass Dinosaurier nur Knochen essen.', why: 'Knochenfund #3–4 und G1' },
         { title: 'Halbe Wahrheit', premise: 'Alles im Film ist nur die halbe Wahrheit.', why: 'Forschende, Wahrheit' } ] },
-      scenes: { scenes: [
+      scenes: { outline: 'Erst Forschung (#2), dann Knochen.', scenes: [
         { kind: 'orig', quote: 'Eine neue Generation von Forschenden hat mittlerweile jedoch entdeckt, dass dies nur die halbe Wahrheit ist.', text: '', gold: '', beat: 'Setup' },
         { kind: 'edit', quote: 'Das Besondere, diese Knochen gehören keinem Giganten.', text: 'Das Besondere, diese Knochen gehören … Klover.', gold: '', beat: 'Wendung' },
         { kind: 'gold', quote: '', text: '', gold: '1', beat: 'Running Gag' },
@@ -47,6 +47,10 @@ export default async ({ page, shot, log, sleep }) => {
   for (let i = 0; i < 30 && !(await ev(`document.querySelectorAll('.sc-story-pitch').length`)); i++) await sleep(200);
   log('Ideen:', await ev(`[...document.querySelectorAll('.sc-story-pitch b')].map(b => b.textContent).join(' | ')`), '· Reiter aktiv:', await ev(`document.querySelector('[data-tab="story"]').getAttribute('aria-selected')`));
   await shot('story-ideas');
+  log('Verweise:', await ev(`[...document.querySelectorAll('.sc-story-pitch .sc-ref')].map(b => b.textContent).join(' ')`));
+  await ev(`document.querySelector('.sc-story-pitch .sc-ref[data-s]').click()`);
+  await sleep(400);
+  log('Sprung: Zeitleiste bei', await ev(`slinky.tl.playhead.toFixed(2)`), '· markiert:', await ev(`document.getElementById('tsel').textContent.slice(0, 80)`));
   await ev(`document.querySelector('.sc-story-pitch .sc-act').click()`);
   for (let i = 0; i < 60 && (await ev(`!document.querySelector('.sc-story-head .pill-button') || document.querySelector('.sc-story-head .pill-button').disabled`)); i++) await sleep(250);
   await sleep(500);
@@ -63,6 +67,7 @@ export default async ({ page, shot, log, sleep }) => {
   await ev(`document.querySelector('.sc-story-head .pill-button').click()`);
   await sleep(600);
   log('Clips vorher/nachher:', before, await ev(`slinky.tl.clips.length`), '· Bereich:', await ev(`JSON.stringify(slinky.tl.range)`), '· Bild-Clips der Szenen:', await ev(`slinky.tl.clips.filter(c => c.type === 'lips' && c.at >= slinky.tl.range.a).length`));
+  log('Bild lückenlos:', await ev(`(() => { const { a, b } = slinky.tl.range; const L = slinky.tl.clips.filter(c => c.type === 'lips' && c.at >= a - 0.01).sort((x, y) => x.at - y.at); let t = a, gap = 0; for (const c of L) { gap += Math.max(0, c.at - t); t = Math.max(t, c.at + c.len); } gap += Math.max(0, b - t); return 'Lücken ' + gap.toFixed(2) + ' s, ' + L.length + ' Bilder'; })()`));
   log('Sätze-Reiter zeigt Szenen nicht:', await ev(`slinky.bin.filter(b => b.story).length`), 'Szenen-Einträge,', await ev(`(document.querySelector('[data-tab="cut"] span').textContent)`), 'im Reiter Sätze');
   await shot('story-placed');
   log('Fehler:', await ev(`JSON.stringify(__errs)`));
