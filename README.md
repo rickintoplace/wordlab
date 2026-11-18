@@ -121,8 +121,11 @@ same for just that passage and replaces it with the version you pick. “Find go
 passages that are funny as they are or with a tiny edit (stop early, swap a
 word); the edits keep the speaker's own words where they are unchanged.
 A new word that differs from a spoken one by one sound (*angepasst* →
-*angefasst*) is offered in the word's alternatives as that word with one
-sound, or one syllable, swapped. In
+*angefasst*) is built from that word with one sound, or one syllable, swapped.
+A retyped word keeps as much of the old word at its place as fits
+(*Chameleons* → *Kamele* stays “Chamele…” from the same sentence).
+The model is picked from a short list of tested ones (Gemini 3.8 Flash by
+default) or typed in freely, with suggestions from OpenRouter's catalogue. In
 lines, “…” makes a dramatic pause (0.8 s) before the punchline.
 
 The list has two tabs: “Sentences” (everything cut, AI ideas) and “Gold”

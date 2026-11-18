@@ -1,0 +1,58 @@
+# Grenzfälle für die Feedback-Schleife (Quelle: tier12). Eine Zeile pro Satz.
+# Bekannte Problemfälle aus den Hörtests
+Der Hase hat eine Nase.
+Kacke
+Die Blase platzt.
+Mein Computer frisst Pizza.
+Sie werden angefasst.
+Die Beute ist Scheiße.
+Fledermäuse finden ihre Beutetiere doof.
+Chameleons können ihre Lippen unabhängig voneinander bewegen.
+Sie können gleichzeitig nach vorne und Hintern schauen.
+selbst in extremsten Extremräumen.
+treibens
+Sie treibens im Wasser.
+Die Jägers
+Wassers
+Furz
+Hurensohn
+Der Pinguin ist ein Arschloch.
+Die Jägerin trinkt alleine.
+Wasserlöwen haben immer Hunger.
+Der Spitzenpinguin frisst Sardellen.
+# Verschlusslaute vor Vokalen, lange und kurze Vokale
+Die Tante kocht Kaffee.
+Der Papa putzt das Auto.
+Die Katze tötet Tauben.
+Ein Pudel bellt laut.
+Das Boot ist kaputt.
+Die Rose ist rot.
+Der Mond ist nass.
+Die Nase ist lang.
+Die Schlange hat Hunger.
+Der Hai beißt den Taucher.
+# Gebaute Schimpfwörter und Derbes
+Du bist ein Penner.
+Das ist Pisse.
+Der Löwe furzt im Schlaf.
+Die Boa hat einen dicken Hintern.
+Die Beute ist geil.
+Leck mich am Arsch.
+Halt die Fresse.
+Die Fledermaus kotzt.
+# Minimalpaare und kleine Änderungen
+Die Löwen fangen Fische.
+Die Fische lieben den Schatten.
+Die Pinguine tanzen im Wasser.
+Die Robben wackeln im Sand.
+Die Zunge ist lecker.
+Die Spinne wartet auf Beute.
+# Ganze Sätze mit gemischten Teilen
+Die Antilope frisst den Löwen.
+Der Jäger wird gejagt.
+Alle Tiere haben Hunger auf Pizza.
+Im Wasser sind alle nackt.
+Die Fledermaus fliegt in die Hölle.
+Die Boa ist eine Würgeschlange und mag Wurst.
+Der Schwertwal ist ein Raubtier.
+Die Mahlzeit ist eine Katastrophe.

@@ -9,7 +9,7 @@ import { endOf, speedOf, srcSpan, timeOf, toggleCrossfades, migrate, keptSpan } 
 import { Player } from './player.js';
 import * as cache from './cache.js';
 import { pack, unpack, estimateMB } from './projfile.js';
-import { DEFAULT_MODEL, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, streamPick, vocabulary } from './ideas.js';
+import { DEFAULT_MODEL, MODELS, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, streamPick, vocabulary } from './ideas.js';
 
 paintIcons();
 const $ = id => document.getElementById(id);
@@ -1851,25 +1851,41 @@ $('export-mark').addEventListener('change', e => store.set('slinky-watermark', e
 const ideas = { btn: $('ideas-btn'), box: $('ideas'), topic: $('ideas-topic'), key: $('ideas-key'), model: $('ideas-model'), go: $('ideas-go'), status: $('ideas-status'), list: $('ideas-models') };
 ideas.key.value = store.get('slinky-openrouter-key');
 // alte Voreinstellung durch die neue ersetzen, eine eigene Wahl bleibt
-ideas.model.value = [store.get('slinky-openrouter-model')].find(m => m && m !== 'google/gemini-2.5-flash-lite') ?? DEFAULT_MODEL;
+// alte Voreinstellungen durch die neue ersetzen, eine eigene Wahl bleibt
+ideas.model.value = [store.get('slinky-openrouter-model')].find(m => m && !['google/gemini-2.5-flash-lite', 'deepseek/deepseek-v4.1-flash-1017'].includes(m)) ?? DEFAULT_MODEL;
+// Auswahl: die empfohlenen Modelle, sonst „Other…“ mit Freitext und Vorschlägen
+const pick = $('ideas-pick');
+pick.replaceChildren(...MODELS.map(m => Object.assign(document.createElement('option'), { value: m.id, textContent: m.label })),
+  Object.assign(document.createElement('option'), { value: '', textContent: 'Other model…' }));
+const syncPick = () => { const known = MODELS.some(m => m.id === ideas.model.value); pick.value = known ? ideas.model.value : ''; $('ideas-other').hidden = known; };
+syncPick();
+pick.addEventListener('change', () => {
+  if (pick.value) { ideas.model.value = pick.value; store.set('slinky-openrouter-model', pick.value); }
+  $('ideas-other').hidden = !!pick.value;
+  if (!pick.value) { ideas.model.value = ''; ideas.model.focus(); loadModels(); }
+});
 // Schlüssel gespeichert: Feld zugeklappt, nur ein Hinweis; ohne Schlüssel offen
 const keyInfo = () => { const k = ideas.key.value.trim(); $('ideas-keyinfo').textContent = k ? '· saved' : ''; if (!k) $('ideas-keys').open = true; };
 keyInfo();
 ideas.key.addEventListener('change', () => { store.set('slinky-openrouter-key', ideas.key.value.trim()); keyInfo(); });
-ideas.model.addEventListener('change', () => store.set('slinky-openrouter-model', ideas.model.value.trim()));
+ideas.model.addEventListener('change', () => { store.set('slinky-openrouter-model', ideas.model.value.trim()); if (MODELS.some(m => m.id === ideas.model.value.trim())) syncPick(); });
 ideas.btn.addEventListener('click', () => {
   ideas.box.hidden = !ideas.box.hidden;
   ideas.btn.setAttribute('aria-expanded', String(!ideas.box.hidden));
   if (!ideas.box.hidden && !ideas.list.childElementCount) loadModels();
 });
 // Modellliste für die Auswahl (günstige zuerst); ohne Netz bleibt das Feld frei
+// Vorschläge für „Other…“: Textmodelle mit JSON-Antwort, günstig zuerst, mit Preis
 async function loadModels() {
+  if (ideas.list.childElementCount) return;
   try {
     const { data } = await (await fetch('https://openrouter.ai/api/v1/models')).json();
-    const price = m => Number(m.pricing?.prompt ?? 1) + Number(m.pricing?.completion ?? 1);
-    ideas.list.replaceChildren(...data.filter(m => price(m) > 0).sort((a, b) => price(a) - price(b)).slice(0, 80)
-      .map(m => Object.assign(document.createElement('option'), { value: m.id })));
-  } catch { /* egal */ }
+    const $M = m => Number(m.pricing?.prompt ?? 1) * 6000 + Number(m.pricing?.completion ?? 1) * 2000;   // $ für eine Suche: ≈ 6k Token rein, 2k raus
+    const ok = m => Number(m.pricing?.prompt) > 0 && m.architecture?.output_modalities?.includes('text')
+      && (m.supported_parameters ?? []).some(p => p === 'response_format' || p === 'structured_outputs') && (m.context_length ?? 0) >= 32000;
+    ideas.list.replaceChildren(...data.filter(ok).sort((a, b) => $M(a) - $M(b)).slice(0, 120)
+      .map(m => Object.assign(document.createElement('option'), { value: m.id, label: `${m.name ?? m.id} · ~${($M(m) * 100).toFixed(2)} ct` })));
+  } catch { /* ohne Netz: Freitext */ }
 }
 const idle = () => { ideas.go.disabled = false; findsGo.disabled = false; ideas.go.classList.remove('busy'); ideas.status.classList.remove('sc-busy-text'); };
 ideas.go.addEventListener('click', () => S && getIdeas({ topic: ideas.topic.value.trim() }).catch(err => { ideas.status.textContent = err.message; idle(); }));

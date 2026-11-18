@@ -18,6 +18,10 @@ Reply as JSON: {"heard": "…", "problems": [...], "grade": n}`;
 const BLIND = `Transcribe this German audio clip exactly as it sounds, letter-faithful in German spelling. It was cut together from pieces of other words, so it may contain non-words, wrong or missing sounds, wrong vowel length or clipped syllables – write what is really audible, do not guess real words. Mark clearly long vowels by doubling (e.g. "Baase") only if they are unusually long.
 Reply as JSON: {"heard": "…"}`;
 
+const BLIND_IPA = `Transcribe this German audio clip exactly as it sounds. It was cut together from pieces of other words, so it may contain non-words, wrong or missing sounds, wrong vowel length, clipped syllables or odd stress – write what is really audible, do not guess real words.
+Give it twice: letter-faithful in German spelling, and as a narrow IPA transcription (with vowel length ː and stress ˈ).
+Reply as JSON: {"heard": "…", "ipa": "…"}`;
+
 /** WAV-Datei → 16 kHz mono WAV als Base64 (klein, reicht für Sprache). */
 function wav16(file) {
   return execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-ac', '1', '-ar', '16000', '-f', 'wav', '-'], { maxBuffer: 1 << 26 }).toString('base64');
@@ -28,7 +32,7 @@ export async function judgeClip(model, file, text) {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'Slinky-Cut judge' },
     body: JSON.stringify({ model, temperature: 0, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: [
-      { type: 'text', text: process.env.BLIND ? BLIND : PROMPT(text) },
+      { type: 'text', text: process.env.IPA ? BLIND_IPA : process.env.BLIND ? BLIND : PROMPT(text) },
       { type: 'input_audio', input_audio: { data: wav16(file), format: 'wav' } },
     ] }] }),
   });
@@ -48,7 +52,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   for (const c of clips) {
     const r = await judgeClip(model, c.file, c.text).catch(e => ({ heard: 'FEHLER ' + e.message, problems: [], grade: null, cost: 0 }));
     cost += r.cost;
-    console.log(`${String(r.grade ?? '?').padStart(2)}  ${c.text}  →  „${r.heard}“${c.truth ? `\n      Ohr: ${c.truth}` : ''}`);
+    console.log(`${String(r.grade ?? '?').padStart(2)}  ${c.text}  →  „${r.heard}“${r.ipa ? `  [${r.ipa}]` : ''}${c.truth ? `\n      Ohr: ${c.truth}` : ''}`);
     for (const p of r.problems ?? []) console.log(`      · ${p.word}: ${p.sounds_like ?? ''} (${p.issue ?? ''})`);
   }
   console.log(`${model}: ${clips.length} Clips, ${((Date.now() - t0) / 1000).toFixed(0)} s, $${cost.toFixed(5)}`);

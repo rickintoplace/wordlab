@@ -506,3 +506,6 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .sc-ideas-keys[open] summary { margin-bottom: .45rem; }
 .sc-ideas-keys summary span { color: var(--c-rime-1); }
 #ideas-topic { width: 100%; }
+
+#ideas-pick { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: .35rem .4rem; min-width: 0; }
+.sc-ideas-other { grid-column: 1 / -1; }

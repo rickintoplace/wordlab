@@ -1,8 +1,17 @@
 // Satzideen per Sprachmodell (OpenRouter). Reiner Code ohne DOM, damit Seite und
 // Testskripte denselben Prompt benutzen.
 
-/** Günstig und beliebt (Nov. 2026): Eingabe kostet fast nichts, der Wortschatz ist lang. */
-export const DEFAULT_MODEL = 'deepseek/deepseek-v4.1-flash-1017';
+/**
+ * Empfohlene Modelle (gemessen Nov. 2026 mit „Find gold“ auf 12 Minuten Doku): Gemini 3.8
+ * Flash fand die klügsten Stellen in ~30 s; Flash-Lite antwortet sofort, aber plumper;
+ * DeepSeek denkt ~2 Minuten nach.
+ */
+export const MODELS = [
+  { id: 'google/gemini-3.8-flash', label: 'Gemini 3.8 Flash · funniest · ~30 s · ~2.5 ct per search' },
+  { id: 'google/gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite · instant · ~0.3 ct · cruder' },
+  { id: 'deepseek/deepseek-v4.1-flash-1017', label: 'DeepSeek V4.1 Flash · ~2 min · ~1.5 ct' },
+];
+export const DEFAULT_MODEL = MODELS[0].id;
 
 const SYSTEM = `You write YouTube Poop (YTP) sentence mixes. Sentence mixing re-cuts real footage word by word so the speaker seems to say things they never said. The joke is always the contrast with how they normally sound: the more serious the speaker, the dumber the line.
 
