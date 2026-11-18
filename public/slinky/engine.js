@@ -14,7 +14,7 @@ import { pronounceSync, deSuffixes } from './g2p.js';
 
 // ---------- Gewichte (später per Hörtest zu tunen) ----------
 export const W = {
-  sameClass: 1.5,        // anderer Laut derselben Klasse (z. B. ɛ statt eː)
+  sameClass: 5,        // anderer Laut derselben Klasse (z. B. ɛ statt eː)
   ctxExact: 0,           // Nachbarlaut in der Quelle wie im Ziel
   ctxClass: 0.4,
   ctxGroup: 1.0,         // gleiche Lautgruppe (z. B. beide Nasale)
@@ -32,7 +32,7 @@ export const W = {
   voicing: 1.5,
   energy: 0.06,          // pro dB
   wordBonus: 0.3,
-  wpos: 1.5,             // Lautposition im Wort (Anlaut/Inlaut/Auslaut) passt nicht
+  wpos: 3,             // Lautposition im Wort (Anlaut/Inlaut/Auslaut) passt nicht
   bound: 1.5,            // letztes Wort vor einer Grenze: Grenztyp (Aussage/Frage/Aufzählung) passt nicht
   prom: 1.5,             // Betonung: Prominenz des Quellvokals passt nicht zum Ziel
   dur: 2.5,              // zusammengesetzter Laut deutlich kürzer als üblich
@@ -42,13 +42,14 @@ export const W = {
   fricCut: 0.35,         // Schnitt mitten in stimmlosem Reibelaut (s, sch, f, ch): fast unhörbar, trägt kaum Stimmfarbe
   near: 0,               // Stücke aus weit auseinanderliegenden Stellen der Quelle (andere Szene, andere Stimmung)
   burstLeak: 2.0,        // behauchter Anfang nach stimmlosem Verschluss, wo das Ziel keinen hat („lol“ → „klol“), je 20 ms
-  sylRole: 1.0,          // Konsonant im Silbenanfang vs. Silbenende (anders gesprochen: „ts“ in „Wur-zeln“ ≠ „Furz“)
+  sylRole: 2,          // Konsonant im Silbenanfang vs. Silbenende (anders gesprochen: „ts“ in „Wur-zeln“ ≠ „Furz“)
   sylLast: 0.6,          // Vokal/Endkonsonant aus letzter vs. nicht letzter Silbe des Worts (Längung am Wortende)
   codaPos: 1,            // Anteil von wpos, wenn beide im Silbenendrand stehen und sich nur Wortende/Wortinneres unterscheidet
   boundVowelOnly: 1,     // Grenztyp nur am Vokal der letzten Silbe prüfen
   vowelCtx: 2.5,
-  lenSwap: 1.0,          // gleicher Vokal, andere Länge (o/oː); die Dauer bewertet durDev zusätzlich
-  vowelSwap: 4.0,        // anderer Vokal derselben Klasse (ɔ statt oː, ɛ statt eː)
+  consVctx: 1,           // Konsonant neben anderem Vokal als im Ziel: Faktor auf die Kontextkosten
+  lenSwap: 2.5,          // gleicher Vokal, andere Länge (o/oː); die Dauer bewertet durDev zusätzlich
+  vowelSwap: 8,        // anderer Vokal derselben Klasse (ɔ statt oː, ɛ statt eː)
   home: 3.0,             // je Hälfte: Laut aus der Gegend des ersetzten Worts (beim Umschreiben)
   noRelease: 3.0,        // Verschlusslaut ohne Knall, wo das Ziel einen braucht
   shortVowel: 2.0,       // je Hälfte: vom Vokal bleiben nach Knall/Behauchung keine 30 ms
@@ -502,7 +503,8 @@ function selectOnce(src, tgt, K, constrain, cuts, only, pen, prefer) {
       ? (p.voiceOn > 0.5 * (p.e - p.s) ? 4 * W.burstLeak : W.burstLeak * Math.min(2, p.voiceOn / 0.02)) : 0);
     // Vokale tragen die Übergänge der Nachbarlaute in sich (nach „v“ klingt „a“ anders als nach „h“)
     // (nur Übergänge zu Lauten; Pause gegen Laut zählt wie bei allen anderen)
-    const vk = (a, b) => (isVowel(T.t) && a && b ? W.vowelCtx : 1);
+    // … und Konsonanten die Übergänge der Vokale daneben („b“ aus „Räuber“ färbt „Tauben“ zu „Täuben“)
+    const vk = (a, b) => (!a || !b ? 1 : isVowel(T.t) ? W.vowelCtx : GROUP(a) === 'V' && GROUP(b) === 'V' ? W.consVctx : 1);
     // Knall des Verschlusses davor im Anfang dieses Lauts, wo im Ziel keiner davorsteht
     const burstC = p => (p.burstIn && canon(p.prevT) !== canon(T.prevT) ? (p.burstIn > 0.5 * (p.e - p.s) ? 4 : 2) * W.burstLeak : 0);
     const lctx = p => (STOPS.test(T.t) ? 0.3 * ctxCost(p.prevT, T.prevT) : vk(p.prevT, T.prevT) * ctxCost(p.prevT, T.prevT)) + leak(p) + burstC(p);
