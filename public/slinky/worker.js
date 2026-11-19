@@ -70,7 +70,7 @@ self.onmessage = async ({ data: m }) => {
 
 // Ändert sich das Verorten (Lexikon, Grenzen), wird es aus den gespeicherten
 // Modell-Ergebnissen neu gerechnet – ohne die langsamen Stufen zu wiederholen.
-const ALIGN_VERSION = 7;   // 7: Grenzen an Verschluss, Knall und Stimmeinsatz; 6: trennbare Vorsilben (an|ge|fasst); 3: Lexikon wählt die Standardform (wir → [viːɐ̯], nicht [mɐ]); 4: Zahlen werden ausgesprochen; 5: Längen aus dem Wörterbuch, Vokal-Vokal-Grenzen
+const ALIGN_VERSION = 8;   // 8: am Satzende vom nächsten Satz geborgte Laute; 7: Grenzen an Verschluss, Knall und Stimmeinsatz; 6: trennbare Vorsilben (an|ge|fasst); 3: Lexikon wählt die Standardform (wir → [viːɐ̯], nicht [mɐ]); 4: Zahlen werden ausgesprochen; 5: Längen aus dem Wörterbuch, Vokal-Vokal-Grenzen
 
 const MUSIC_CLEAN = 2;      // Fassung der Stimmrest-Filterung der Musik
 const lexicon = lang => fetch(`/data/slinky/lex-${lang}.txt?v=${ALIGN_VERSION}`).then(r => r.text()).then(parseLexicon);

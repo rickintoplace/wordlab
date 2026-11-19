@@ -819,7 +819,7 @@ export function render(src, segs, { xfade = 0.008, search = 0.006, naive = false
       // Dauerlaut ohne Pause in der Quelle: nicht künstlich verlängern (klang wie [f]),
       // sondern die letzten 25 ms sanft ausblenden
       if (gap <= 0 && !stop) {
-        const Fo = Math.min(out.length, Math.round(0.025 * SR));
+        const Fo = Math.min(out.length, Math.round((globalThis.SLINKY_FADE_END ?? 0.025) * SR));
         for (let i = 0; i < Fo; i++) out[out.length - Fo + i] *= 0.5 + 0.5 * Math.cos(Math.PI * (i + 1) / Fo);
       }
       const tl = Math.min(n, ring.length), fade = Math.min(tl, Math.round((gap > 0 ? 0.06 : stop ? 0.012 : 0.07) * SR));

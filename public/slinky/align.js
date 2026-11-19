@@ -193,8 +193,27 @@ export function alignWords({ words, post: P, V, vocab, audio16, pronounce, progr
     const tA = Math.max(lastEnd, words[g[0]].s - 0.5);
     const tB = next ? Math.min(words[next[0]].s, words[g.at(-1)].e + 0.6) : words[g.at(-1)].e + 0.6;
     const f0 = Math.max(0, Math.floor(tA * FPS)), f1 = Math.min(frames, Math.ceil(tB * FPS));
-    const path = viterbi(tokens, f0, f1);
+    let path = viterbi(tokens, f0, f1);
     if (!path) continue;
+    // Letzte Laute des Satzes hinter einer langen Stille, dicht am Fensterende: Die hat sich das
+    // Modell vom Anfang des nächsten Satzes geborgt („gehen. | Ein“: das „n“ aus „Ein“, dann war
+    // „Ein“ verrutscht). Neu ausrichten, mit Fensterende kurz nach der Stille.
+    if (!globalThis.SLINKY_NO_STEAL) {
+      const A = new Int32Array(tokens.length).fill(-1), B = new Int32Array(tokens.length).fill(-1);
+      path.forEach((st, t) => { if (st % 2) { const j = (st - 1) / 2; if (A[j] < 0) A[j] = t; B[j] = t; } });
+      const lw = g.at(-1), J = tokens.map((tk, j) => j).filter(j => tokens[j].w === lw && A[j] >= 0);
+      const lastJ = J.at(-1);
+      if (lastJ != null && B[lastJ] >= f1 - f0 - 8) {
+        for (let q = 1; q < J.length; q++) {
+          const gap = A[J[q]] - B[J[q - 1]];
+          if (gap >= 15 && J.length - q <= 2) {
+            const p2 = viterbi(tokens, f0, f0 + B[J[q - 1]] + 8);
+            if (p2) path = p2;
+            break;
+          }
+        }
+      }
+    }
 
     const spans = tokens.map(() => ({ a: -1, b: -1, lp: 0, n: 0, raw: new Map() }));
     path.forEach((s, t) => {
@@ -219,7 +238,7 @@ export function alignWords({ words, post: P, V, vocab, audio16, pronounce, progr
     }
     for (const cut of cuts) { cut[1] = Math.min(cut[1], c[cut[0]] + 50); cut[2] = Math.max(cut[2], c[cut[0] + 1] - 12); }
     let k0 = 0, startFr = edgeOut(c[0], -1, 12);
-    for (const [k, endFr, nextFr] of [...cuts, [present.length - 1, edgeOut(c.at(-1), +1, 50), -1]]) {
+    for (const [k, endFr, nextFr] of [...cuts, [present.length - 1, edgeOut(c.at(-1), +1, globalThis.SLINKY_EDGE_OUT ?? 50), -1]]) {
       const bounds = segmentDP(c.slice(k0, k + 1), startFr, endFr);
       for (let i = k0; i <= k; i++) {
         const x = present[i];
