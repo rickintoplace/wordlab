@@ -18,8 +18,11 @@ for (const svg of document.querySelectorAll('.sc-mark svg')) {
   const rings = [...svg.querySelectorAll('ellipse')];
   const half = rings.length / 2, order = [...rings.slice(0, half), ...rings.slice(half).reverse()];
   const C = ['--c-onset-1', '--c-rime-1', '--c-onset-2', '--c-rime-2'];
-  // in Bändern wie bei einer Regenbogen-Spirale (Mischtöne dazwischen würden olivgrün und grau)
-  order.forEach((el, k) => { el.style.stroke = `var(${C[Math.min(C.length - 1, Math.floor((k * C.length) / order.length))]})`; });
+  // fließend wie im Ring der Knöpfe (Mischung in Oklab)
+  order.forEach((el, k) => {
+    const t = (k / (order.length - 1)) * (C.length - 1), i = Math.min(C.length - 2, Math.floor(t)), f = t - i;
+    el.style.stroke = `color-mix(in oklab, var(${C[i]}) ${Math.round((1 - f) * 100)}%, var(${C[i + 1]}))`;
+  });
 }
 const $ = id => document.getElementById(id);
 const els = {

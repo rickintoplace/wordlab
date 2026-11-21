@@ -13,8 +13,8 @@ body[data-page="slinky"] main { max-width: 52rem; align-items: stretch; }
 
 /*
  * Farbe von Slinky-Cut: dieselben vier Farben wie die bunten Ringe der Knöpfe (Bernstein,
- * Petrol, Indigo, Altrosa). Das Logo läuft Windung für Windung durch sie hindurch (jede
- * Windung einfarbig, damit die Spirale flach bleibt); der Akzent ist Indigo – die übrigen
+ * Petrol, Indigo, Altrosa). Das Logo läuft Windung für Windung fließend durch sie hindurch
+ * (jede Windung einfarbig, damit die Spirale flach bleibt); der Akzent ist Indigo – die übrigen
  * drei Farben stehen schon für die Güte der Wörter.
  */
 :root { --sc-accent: var(--c-onset-2); }
