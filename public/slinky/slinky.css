@@ -12,32 +12,12 @@ body[data-page="slinky"] main { max-width: 52rem; align-items: stretch; }
 }
 
 /*
- * Farbe von Slinky-Cut: ein kräftiger Verlauf wie beim Instagram-Logo (unten links gelb,
- * oben rechts kalt) für Logo und Ringe, daraus ein Akzent für Knöpfe, Fokus und Abspielkopf.
- * Zum Ausprobieren: ?accent=b|c|d in der Adresse (a = Vorgabe).
+ * Farbe von Slinky-Cut: dieselben vier Farben wie die bunten Ringe der Knöpfe (Bernstein,
+ * Petrol, Indigo, Altrosa). Das Logo läuft Windung für Windung durch sie hindurch (jede
+ * Windung einfarbig, damit die Spirale flach bleibt); der Akzent ist Indigo – die übrigen
+ * drei Farben stehen schon für die Güte der Wörter.
  */
-:root {
-  --sc-g1: #ffd600; --sc-g2: #ff6a00; --sc-g3: #ff0069; --sc-g4: #c400e8; --sc-g5: #5a3dff;
-  --sc-accent: light-dark(oklch(.58 .25 8), oklch(.72 .21 5));
-  --sc-grad: linear-gradient(45deg in oklch, var(--sc-g1), var(--sc-g2) 25%, var(--sc-g3) 50%, var(--sc-g4) 75%, var(--sc-g5));
-}
-body[data-accent="b"] {   /* tropisch: Gelb, Orange, Pink, Türkis, Grün */
-  --sc-g1: #ffe600; --sc-g2: #ff7300; --sc-g3: #ff1f7a; --sc-g4: #00c8ff; --sc-g5: #00f0a0;
-  --sc-accent: light-dark(oklch(.6 .23 355), oklch(.73 .19 355));
-}
-body[data-accent="c"] {   /* Bonbon: Rot, Magenta, Violett, Blau, Cyan */
-  --sc-g1: #ff4d00; --sc-g2: #ff0080; --sc-g3: #a100ff; --sc-g4: #2e6bff; --sc-g5: #00e0ff;
-  --sc-accent: light-dark(oklch(.52 .27 305), oklch(.72 .19 305));
-}
-body[data-accent="d"] {   /* ganzes Spektrum */
-  --sc-g1: #ffe600; --sc-g2: #ff5e00; --sc-g3: #ff007a; --sc-g4: #7b2bff; --sc-g5: #00c2ff;
-  --sc-accent: light-dark(oklch(.55 .26 335), oklch(.73 .2 335));
-}
-/* Gold bleibt goldgelb (Stern, Reiter) */
-/* Ringe der Pillen-Knöpfe im selben Verlauf */
-body[data-page="slinky"] .pill-button {
-  background: conic-gradient(from var(--angle) in oklch, var(--sc-g1), var(--sc-g2), var(--sc-g3), var(--sc-g4), var(--sc-g5), var(--sc-g1));
-}
+:root { --sc-accent: var(--c-onset-2); }
 
 /* ------------------------------------------------------------------ Kopf */
 .sc-head { text-align: center; display: grid; justify-items: center; gap: .4rem; }
@@ -459,7 +439,7 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .pill-button.sc-pill.busy { --spin: .9s; --ring: 2.5px; }
 /* Statuszeile beim Warten: ein Farbschimmer läuft durch den Text */
 .sc-busy-text {
-  background: linear-gradient(90deg, var(--muted) 0%, var(--muted) 35%, var(--sc-g3) 45%, var(--sc-g5) 55%, var(--muted) 65%, var(--muted) 100%);
+  background: linear-gradient(90deg, var(--muted) 0%, var(--muted) 35%, var(--c-onset-1) 45%, var(--c-rime-1) 55%, var(--muted) 65%, var(--muted) 100%);
   background-size: 250% 100%;
   -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: sc-shimmer 1.6s linear infinite;
@@ -468,7 +448,7 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .sc-busy { display: flex; align-items: center; gap: .6rem; margin: 0; font-size: .85rem; }
 .sc-busy-ring {
   --angle: 0deg; flex: none; width: 1.15rem; height: 1.15rem; border-radius: 50%;
-  background: conic-gradient(from var(--angle) in oklch, var(--sc-g1), var(--sc-g2), var(--sc-g3), var(--sc-g4), var(--sc-g5), var(--sc-g1));
+  background: conic-gradient(from var(--angle), var(--c-onset-1), var(--c-rime-1), var(--c-onset-2), var(--c-rime-2), var(--c-onset-1));
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
   mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
   animation: spin .9s linear infinite;

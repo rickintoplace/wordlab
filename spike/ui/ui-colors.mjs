@@ -19,10 +19,14 @@ export default async ({ page, shot, log, sleep }) => {
     const link = document.createElement('p'); link.style.margin = '0';
     link.innerHTML = 'Baut auf <button class="sc-ref">#31–47</button> auf · <span class="sc-tag sc-kind-edit">Edit</span> · Wiedergabe <span style="display:inline-block;width:60px;height:3px;background:var(--sc-accent);vertical-align:middle"></span>';
     col.append(h, row, link);
-    box.append(logo, col);
+    // zum Vergleich: dieselben Farben fließend (Mischung wie im Ring der Knöpfe)
+    const smooth = logo.cloneNode(true), rings = [...smooth.querySelectorAll('ellipse')], half = rings.length / 2;
+    const order = [...rings.slice(0, half), ...rings.slice(half).reverse()], C = ['--c-onset-1', '--c-rime-1', '--c-onset-2', '--c-rime-2'];
+    order.forEach((el, k) => { const t = k / (order.length - 1) * 3, i = Math.min(2, Math.floor(t)), f = t - i; el.style.stroke = `color-mix(in oklab, var(${C[i]}) ${Math.round((1 - f) * 100)}%, var(${C[i + 1]}))`; });
+    box.append(logo, smooth, col);
     document.body.append(box);
   })()`);
-  for (const v of ['a', 'b', 'c', 'd']) for (const theme of ['dark', 'light']) {
+  for (const v of ['a']) for (const theme of ['dark', 'light']) {
     await ev(`(() => { document.body.dataset.accent = '${v}'; document.documentElement.style.colorScheme = '${theme}'; document.documentElement.dataset.theme = '${theme}'; })()`);
     await sleep(300);
     await shot(`farbe-${v}-${theme}`);

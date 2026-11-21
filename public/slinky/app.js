@@ -12,24 +12,14 @@ import { pack, unpack, estimateMB } from './projfile.js';
 import { DEFAULT_MODEL, MODELS, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, streamPick, vocabulary, storyPitches, writeStory, fixScenes, storyMessages, rawScene, transcriptSentences, MAX_BUILD_COST } from './ideas.js';
 
 paintIcons();
-// Farbvariante zum Ausprobieren (?accent=b|c|d), sonst die Vorgabe
-{ const v = new URLSearchParams(location.search).get('accent'); if (/^[a-d]$/.test(v ?? '')) document.body.dataset.accent = v; }
-// Logo im Verlauf: wie beim Instagram-Logo von unten links (warm) nach oben rechts (kalt)
+// Logo in den Farben der bunten Ringe: Windung für Windung vom linken Fuß über den Bogen zum
+// rechten Fuß, jede Windung einfarbig (ein Verlauf quer darüber ließe die Spirale räumlich wirken)
 for (const svg of document.querySelectorAll('.sc-mark svg')) {
-  const NS = 'http://www.w3.org/2000/svg', id = 'sc-logo-grad';
-  // vom linken Fuß (warm) über den Bogen zum rechten Fuß (kalt), leicht schräg nach oben
-  const g = document.createElementNS(NS, 'linearGradient');
-  g.id = id; g.setAttribute('gradientUnits', 'userSpaceOnUse');
-  g.setAttribute('x1', '1'); g.setAttribute('y1', '22'); g.setAttribute('x2', '23'); g.setAttribute('y2', '9');
-  [0, 0.25, 0.5, 0.75, 1].forEach((o, i) => {
-    const st = document.createElementNS(NS, 'stop');
-    st.setAttribute('offset', String(o)); st.setAttribute('style', `stop-color: var(--sc-g${i + 1})`);
-    g.append(st);
-  });
-  const defs = document.createElementNS(NS, 'defs');
-  defs.append(g);
-  svg.prepend(defs);
-  svg.setAttribute('stroke', `url(#${id})`);
+  const rings = [...svg.querySelectorAll('ellipse')];
+  const half = rings.length / 2, order = [...rings.slice(0, half), ...rings.slice(half).reverse()];
+  const C = ['--c-onset-1', '--c-rime-1', '--c-onset-2', '--c-rime-2'];
+  // in Bändern wie bei einer Regenbogen-Spirale (Mischtöne dazwischen würden olivgrün und grau)
+  order.forEach((el, k) => { el.style.stroke = `var(${C[Math.min(C.length - 1, Math.floor((k * C.length) / order.length))]})`; });
 }
 const $ = id => document.getElementById(id);
 const els = {
