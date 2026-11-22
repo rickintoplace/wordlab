@@ -202,7 +202,7 @@ export class Timeline extends EventTarget {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const r = this.scroll.getBoundingClientRect(), x = e.clientX - r.left, t = (this.scroll.scrollLeft + x) / this.pps;
-        this.zoom(this.pps * (e.deltaY < 0 ? 1.15 : 1 / 1.15), t, x);
+        this.zoom(this.pps * (e.deltaY > 0 ? 1.15 : 1 / 1.15), t, x);   // nach unten: hinein
       } else if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && !e.shiftKey) {
         // Mausrad ohne Taste: waagrecht durch die Zeit
         e.preventDefault();

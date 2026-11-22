@@ -38,21 +38,46 @@ export function alignWords({ words, post: P, V, vocab, audio16, pronounce, progr
   const pv = phoneVocab(vocab);
   const classIdx = new Map();
   vocab.forEach((t, i) => { if (!pv.has(t)) return; const c = soundClass(t); (classIdx.get(c) ?? classIdx.set(c, []).get(c)).push(i); });
+  // „17.“ mitten im Satz ist meist eine Ordnungszahl („im 17. Jahrhundert“ = siebzehnten):
+  // die Endung -(s)te(n/r/s) als optionale Laute anhängen, die Ausrichtung entscheidet
+  const ordinal = (w, next) => /^\d+\.$/.test(w) && !!next;
   const wtoks = words.map((w, wi) => {
-    const toks = pronounce(w.w);
+    let toks = pronounce(w.w);
+    if (ordinal(w.w, words[wi + 1])) {
+      const n = parseInt(w.w, 10), end = (n % 100 >= 20 || n >= 100 ? ['s', 't'] : ['t']).concat(['ə', 'n']);
+      toks = [...toks, ...end.map(t => ({ t, stress: 0, opt: true }))];
+    }
     return toks.map((x, k) => ({
       t: x.t, cls: soundClass(x.t), stress: x.stress, w: wi,
       // Schwa vor n/l/m am Wortende fällt oft weg („regnen“ → [ʁeːɡŋ̍])
-      optional: x.t === 'ə' && k + 1 < toks.length && /^[nlm]$/.test(toks[k + 1].t) && k + 2 >= toks.length - 1,
+      optional: !!x.opt || (x.t === 'ə' && k + 1 < toks.length && /^[nlm]$/.test(toks[k + 1].t) && k + 2 >= toks.length - 1),
     }));
   });
 
   // --- Gruppen (Sätze/Atemgruppen) --------------------------------------------
+  // Whisper schreibt manchmal eine Stelle doppelt, mit (fast) denselben Zeiten. Die Wiederholung
+  // bekommt keine Laute (sonst quetscht die Ausrichtung beide Fassungen in dieselbe Zeit).
+  // Nur ganze Läufe ab drei Wörtern zählen (kurze Wörter haben bei Whisper auch sonst mal fast
+  // dieselben Zeiten).
+  const dup = new Set(), key = w => w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  const twin = (i, j) => Math.abs(words[i].s - words[j].s) <= 0.1 && (key(words[i].w) === key(words[j].w) || Math.abs(words[i].e - words[j].e) <= 0.15);
+  for (let i = 0; i < words.length; i++) {
+    if (dup.has(i)) continue;
+    for (let j = i - 1; j >= 0 && words[j].s > words[i].s - 5; j--) {
+      if (dup.has(j) || !twin(i, j)) continue;
+      let n = 0;
+      while (i + n < words.length && j + n < i && twin(i + n, j + n)) n++;
+      if (n >= 3) { for (let k = 0; k < n; k++) dup.add(i + k); break; }
+    }
+  }
   const groups = [];
   let cur = [];
+  let prevI = -1;
   words.forEach((w, i) => {
-    const prev = words[i - 1];
-    if (cur.length && (w.s - prev.e > 0.4 || /[.!?]$/.test(prev.w) || cur.length >= 30)) { groups.push(cur); cur = []; }
+    if (dup.has(i)) return;
+    const prev = words[prevI];
+    prevI = i;
+    if (cur.length && (w.s - prev.e > 0.4 || (/[.!?]$/.test(prev.w) && !ordinal(prev.w, w)) || cur.length >= 30)) { groups.push(cur); cur = []; }
     cur.push(i);
   });
   if (cur.length) groups.push(cur);
@@ -192,8 +217,18 @@ export function alignWords({ words, post: P, V, vocab, audio16, pronounce, progr
     const next = groups[gi + 1];
     const tA = Math.max(lastEnd, words[g[0]].s - 0.5);
     const tB = next ? Math.min(words[next[0]].s, words[g.at(-1)].e + 0.6) : words[g.at(-1)].e + 0.6;
-    const f0 = Math.max(0, Math.floor(tA * FPS)), f1 = Math.min(frames, Math.ceil(tB * FPS));
+    let f0 = Math.max(0, Math.floor(tA * FPS)), f1 = Math.min(frames, Math.ceil(tB * FPS));
     let path = viterbi(tokens, f0, f1);
+    // Passt der Satz nicht ins Fenster (der vorige hat zu weit gegriffen, oder Whisper setzt die
+    // Zeiten knapp): großzügiger versuchen, statt seine Wörter ganz ohne Laute zu lassen
+    if (!path) {
+      const g0 = Math.max(0, Math.floor((words[g[0]].s - 0.5) * FPS)), g1 = Math.min(frames, f1 + Math.round(0.5 * FPS));
+      path = viterbi(tokens, g0, g1);
+      if (path) { f0 = g0; f1 = g1; }
+    }
+    // Immer noch nicht (z. B. hat Whisper einen Satz doppelt geschrieben, mit überlappenden
+    // Zeiten): in zwei Hälften teilen und jede für sich – sonst blieben alle Wörter ohne Laute
+    if (!path && g.length > 1) { const h = g.length >> 1; groups.splice(gi + 1, 0, g.slice(0, h), g.slice(h)); continue; }
     if (!path) continue;
     // Letzte Laute des Satzes hinter einer langen Stille, dicht am Fensterende: Die hat sich das
     // Modell vom Anfang des nächsten Satzes geborgt („gehen. | Ein“: das „n“ aus „Ein“, dann war

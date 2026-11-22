@@ -9,7 +9,7 @@ import { endOf, speedOf, srcSpan, timeOf, toggleCrossfades, migrate, keptSpan } 
 import { Player } from './player.js';
 import * as cache from './cache.js';
 import { pack, unpack, estimateMB } from './projfile.js';
-import { DEFAULT_MODEL, MODELS, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, streamPick, vocabulary, storyPitches, writeStory, fixScenes, storyMessages, rawScene, transcriptSentences, MAX_BUILD_COST } from './ideas.js';
+import { DEFAULT_MODEL, MODELS, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, streamPick, vocabulary, storyPitches, writeStory, fixScenes, storyMessages, rawScene, transcriptSentences, MAX_BUILD_COST, STORY_MODELS } from './ideas.js';
 
 paintIcons();
 // Logo in den Farben der bunten Ringe: Windung für Windung vom linken Fuß über den Bogen zum
@@ -722,6 +722,22 @@ function lipsFor(c) {
       if (t0 > t1) [t0, t1] = [t1, t0];
       segs.push({ t0, t1, src: p.v + (a - p.a), short: b - a < LIPS_MIN });
     }
+    // Mehrere kurze Stücke hintereinander, die zusammen lang genug sind (ein ausgetauschtes,
+    // aus Silben gebautes Wort): ein Bild für alle – von der Stelle des längsten Stücks, dort
+    // passen die Lippen. So zeigt auch ein getauschtes Wort seinen Mund.
+    if (!c.reverse) {
+      segs.sort((x, y) => x.t0 - y.t0);
+      for (let i = 0; i < segs.length; i++) {
+        if (!segs[i].short) continue;
+        let j = i;
+        while (j + 1 < segs.length && segs[j + 1].short && segs[j + 1].t0 - segs[j].t1 < 0.03) j++;
+        const run = segs.slice(i, j + 1), t0 = run[0].t0, t1 = run.at(-1).t1;
+        if (j > i && t1 - t0 >= LIPS_MIN) {
+          const L = run.reduce((m, x) => (x.t1 - x.t0 > m.t1 - m.t0 ? x : m));
+          segs.splice(i, j - i + 1, { t0, t1, src: Math.max(0, L.src - (L.t0 - t0) * speedOf(c)), short: false });
+        }
+      }
+    }
     // Kurze Stücke (einzelne Laute, Silben) bekommen kein eigenes Bild: Das Bild davor läuft
     // weiter (wie ein J-Cut), am Anfang setzt das nächste Bild entsprechend früher ein.
     // Rückwärts bleibt jedes Stück für sich.
@@ -957,8 +973,13 @@ function aiVersion(entry, list, b) {
     const x = document.createElement('span');
     x.className = `sc-ai-word q ${w.quality}`;
     x.textContent = w.w;
-    x.title = 'Drag this word onto a track or onto Gold · right-click for more';
+    x.title = 'Click: other ways to say it · drag onto a track or onto Gold · right-click for more';
     wordHandle(x, b, wi);
+    x.addEventListener('click', ev => {
+      ev.stopPropagation();
+      const r = x.getBoundingClientRect();
+      pickAlternative({ ...forVersion(b, () => li.replaceWith(aiVersion(entry, list, b))), wi, si: -1, x: r.left, y: r.bottom });
+    });
     t.append(x, ' ');
   });
   const star = document.createElement('button');
@@ -1043,6 +1064,10 @@ async function editSourceWord({ clip: c, si, x, y }) {
 }
 
 /** … oder einer in der Ablage. */
+/** Ziel für Alternativen: eine Fassung der KI (gehört weder zur Liste noch zur Zeitleiste). */
+function forVersion(b, redraw) {
+  return { take: () => b, before: () => {}, use: o => { Object.assign(b, { audio: o.audio, words: o.words, pieces: o.segs, force: o.force, rev: (b.rev ?? 0) + 1 }, o.text ? { text: o.text } : {}); redraw(); } };
+}
 function forBin(b) {
   return { take: () => S.bin.find(x => x.id === b.id), use: o => updateBin(b.id, o), before: () => selectBin(b.id) };
 }
@@ -1373,6 +1398,8 @@ document.addEventListener('keydown', e => {
   if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
   if (e.key.toLowerCase() === 'b' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); S.tl.setBlade(true); return; }
   const mod = e.ctrlKey || e.metaKey, k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  // Markierter Text (Transkript, Drehbuch, Hinweise): Strg+C/A wie überall im Browser
+  if (mod && (k === 'c' || k === 'a') && String(window.getSelection?.() ?? '').trim()) return;
   const map = mod ? { z: e.shiftKey ? 'redo' : 'undo', y: 'redo', d: 'dup', c: 'copy', x: 'cut', v: 'paste', a: 'selectAll' }
     : { ' ': 'play', s: 'split', m: 'mute', x: 'xfade', r: 'reverse', l: 'lips', i: 'markIn', o: 'markOut', Delete: 'del', Backspace: 'del' };
   if (k === 'x' && e.altKey && !mod) { e.preventDefault(); tools.clearRange(); return; }   // wie in Resolve
@@ -1683,6 +1710,9 @@ function aiKey() {
   store.set('slinky-openrouter-key', key); store.set('slinky-openrouter-model', model);
   return { key, model };
 }
+/** Schlüssel und das Modell für Geschichten (eigene Wahl im Story-Feld, Vorgabe Claude Sonnet). */
+const storyModel = () => store.get('slinky-story-model') || STORY_MODELS[0].id;
+function storyAi() { const ai = aiKey(); return ai && { ...ai, model: storyModel() }; }
 /** Wörter des gewählten Sprechers (und ihre Stellen im ganzen Transkript). */
 function storyWords() {
   const spk = speaker();
@@ -1698,7 +1728,7 @@ function busyStory(on) {
 }
 
 async function storyIdeasUI() {
-  const ai = aiKey();
+  const ai = storyAi();
   if (!ai) return;
   const { words, pos } = storyWords();
   const { sentences } = transcriptSentences(words);
@@ -1755,7 +1785,7 @@ function removeItem(id) {
 }
 
 async function writeStoryUI(pitch) {
-  const ai = aiKey();
+  const ai = storyAi();
   if (!ai) return;
   const { pos, words } = storyWords(), gold = storyGold();
   dropItems((S.story?.scenes ?? []).map(sc => sc.id));
@@ -1877,7 +1907,15 @@ function renderStory() {
     sel.value = st?.length ?? 'medium';
     sel.addEventListener('change', () => { S.story.length = sel.value; save(); });
     lab.append(sel);
-    bar.append(lab, btn('New ideas', 'sparkles', () => storyIdeasUI().catch(storyFail)));
+    const mlab = el('label', '', 'Model ');
+    const ms = document.createElement('select');
+    ms.id = 'story-model';
+    const known = STORY_MODELS.some(m => m.id === storyModel());
+    ms.append(...[...STORY_MODELS, ...(known ? [] : [{ id: storyModel(), label: storyModel() }])].map(m => Object.assign(document.createElement('option'), { value: m.id, textContent: m.label })));
+    ms.value = storyModel();
+    ms.addEventListener('change', () => store.set('slinky-story-model', ms.value));
+    mlab.append(ms);
+    bar.append(lab, mlab, btn('New ideas', 'sparkles', () => storyIdeasUI().catch(storyFail)));
   }
   const close = btn('', 'x', () => { S.story.closed = true; renderStory(); save(); }, 'sc-mini sc-x');
   close.disabled = false; close.title = 'Close (Write a story opens it again)'; close.setAttribute('aria-label', 'Close');
@@ -1917,7 +1955,7 @@ function renderStory() {
       mini('arrow-up', 'Move up', () => moveScene(i, -1));
       mini('arrow-up', 'Move down', () => moveScene(i, 1), 'sc-flip');
       mini('sparkles', 'Another version of this scene', () => {
-        const ai = aiKey();
+        const ai = storyAi();
         if (!ai) return;
         busyStory(true);
         replaceScenes([i], ai, { why: () => 'the editor wants another version here: a different joke for the same spot' })

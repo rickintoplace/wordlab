@@ -124,7 +124,7 @@ word); the edits keep the speaker's own words where they are unchanged.
 the model first suggests a few ideas built from the footage (and from the Gold
 list), then writes the scenes of the one you pick – mostly original passages as
 setup and tiny edits of them, Gold clips where they fit, and few new lines, each
-naming the passage whose picture fits it. Scenes that do not cut cleanly are
+naming the passage whose picture fits it. Stories are written by Claude Sonnet 5.5 by default (about 15 ct per story; Gemini Flash strung documentary sentences together without an audible joke), selectable in the story panel. Scenes that do not cut cleanly are
 replaced once automatically; each scene can be moved, removed or rewritten, and
 “Place on the timeline” puts them all behind the end of the timeline with their
 picture and sets the export range to them.

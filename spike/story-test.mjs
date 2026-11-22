@@ -1,7 +1,7 @@
 // Drehbuch testen: node story-test.mjs media/tier12 [Idee-Nr]   (MODEL=…, LENGTH=short|medium|long)
 // Holt Ideen, schreibt das Drehbuch zur gewählten Idee und schneidet jede Szene (Baukosten).
 import { readFileSync, writeFileSync } from 'node:fs';
-import { storyPitches, writeStory, fixScenes, buildCost, MAX_BUILD_COST, keptWords } from '../public/slinky/ideas.js';
+import { storyPitches, writeStory, fixScenes, reviseStory, buildCost, MAX_BUILD_COST, keptWords } from '../public/slinky/ideas.js';
 import { splitWords } from '../public/slinky/engine.js';
 const [dir, pick = '1'] = process.argv.slice(2);
 const key = readFileSync(new URL('../.env', import.meta.url), 'utf8').match(/^OPENROUTER[-_]KEY=(.+)$/m)[1].trim();
@@ -34,6 +34,29 @@ for (const [k, s] of S.scenes.entries()) {
     if (cost > MAX_BUILD_COST) weak.push({ n: k + 1, text: s.text, why: `words built from single sounds: ${r.words.filter(w => w.quality === 'sounds').map(w => w.w).join(', ')}` });
   }
   console.log(`${String(k + 1).padStart(2)} ${s.kind.padEnd(4)} ${cost ? cost.toFixed(1) : '   '} ${s.text ? `„${s.text}“` : `„${s.quote}“`}${s.kind !== 'orig' && s.quote ? `   ⟵ ${s.kind === 'new' ? 'Bild' : 'aus'}: „${s.quote}“` : ''}   [${s.beat}]`);
+}
+// Zweiter Durchgang: wie ein Zuschauer anhören lassen und neu schreiben (REVISE=1)
+const cutAll = async scenes => {
+  const out = [];
+  for (const [k, s] of scenes.entries()) {
+    let mushy = [], cost = 0;
+    if (s.kind === 'edit' || s.kind === 'new') {
+      const force = { words: {}, pins: {}, avoid: {}, pauses: {} };
+      if (s.kind === 'edit') for (const [j, q] of keptWords(s.idx.map(i => words[i].w), splitWords(s.text))) force.words[j] = s.idx[q];
+      const r = await send({ type: 'mix', id: k, text: s.text, force }, m => m.type === 'mixed' || m.type === 'error');
+      cost = r.type === 'error' ? 9 : buildCost(r.words);
+      if (cost > MAX_BUILD_COST) mushy = r.words.filter(w => w.quality === 'sounds').map(w => w.w);
+    }
+    out.push({ kind: s.kind, text: s.text || s.quote || '(gold)', mushy, cost });
+  }
+  return out;
+};
+if (process.env.REVISE) {
+  const heard = await cutAll(S.scenes);
+  const R = await reviseStory({ key, model, words, messages: S.messages, content: S.content, heard, fetchFn: realFetch, onScene: () => {} });
+  console.log(`\nÜberarbeitet (${sec()}, $${R.cost.toFixed(4)})\nKritik: ${R.critique}\nAblauf: ${R.outline}`);
+  const h2 = await cutAll(R.scenes);
+  R.scenes.forEach((s, k) => console.log(`${String(k + 1).padStart(2)} ${s.kind.padEnd(4)} ${h2[k].cost ? h2[k].cost.toFixed(1) : '   '} „${h2[k].text}“${s.kind !== 'orig' && s.quote ? `   ⟵ ${s.kind === 'new' ? 'Bild' : 'aus'}: „${s.quote}“` : ''}   [${s.beat}]`));
 }
 if (process.env.FIX) weak.push({ n: +process.env.FIX, text: S.scenes[+process.env.FIX - 1]?.text || S.scenes[+process.env.FIX - 1]?.quote, why: 'the editor wants another version here' });
 if (weak.length) {

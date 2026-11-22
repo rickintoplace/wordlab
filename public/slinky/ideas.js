@@ -10,8 +10,19 @@ export const MODELS = [
   { id: 'google/gemini-3.8-flash', label: 'Gemini 3.8 Flash · funniest · ~30 s · ~2.5 ct per search' },
   { id: 'google/gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite · instant · ~0.3 ct · cruder' },
   { id: 'deepseek/deepseek-v4.1-flash-1017', label: 'DeepSeek V4.1 Flash · ~2 min · ~1.5 ct' },
+  { id: 'anthropic/claude-sonnet-5.5', label: 'Claude Sonnet 5.5 · best stories · ~5 ct per search' },
 ];
 export const DEFAULT_MODEL = MODELS[0].id;
+/**
+ * Für Geschichten: Im Vergleich (Nov. 2026, Tier-Doku) erzählte Claude Sonnet 5.5 eine echte
+ * Geschichte mit hörbarem Witz („Innerhalb einer Zehntel Sekunde ist die Zunge fertig“), Gemini
+ * 3.8 Flash reihte Doku-Sätze aneinander, deren Witz nur in der Beschreibung stand – auch nach
+ * einer Selbstkritik-Runde. Kostet ~15 ct pro Geschichte (Ideen, Drehbuch, Nachbesserung).
+ */
+export const STORY_MODELS = [
+  { id: 'anthropic/claude-sonnet-5.5', label: 'Claude Sonnet 5.5 · best · ~15 ct per story' },
+  { id: 'google/gemini-3.8-flash', label: 'Gemini 3.8 Flash · ~5 ct · flatter stories' },
+];
 
 const SYSTEM = `You write YouTube Poop (YTP) sentence mixes. Sentence mixing re-cuts real footage word by word so the speaker seems to say things they never said. The joke is always the contrast with how they normally sound: the more serious the speaker, the dumber the line.
 
@@ -177,7 +188,7 @@ export function transcriptSentences(words, maxWords = 9000) {
   words.forEach((w, i) => {
     if (i >= maxWords) return;
     const prev = words[i - 1];
-    if (cur.length && (/[.!?]$/.test(prev.w) || w.s - prev.e > 1.2 || w.spk !== prev.spk)) { sentences.push(cur); cur = []; }
+    if (cur.length && ((/[.!?]$/.test(prev.w) && !/^\d+\.$/.test(prev.w)) || w.s - prev.e > 1.2 || w.spk !== prev.spk)) { sentences.push(cur); cur = []; }
     cur.push(i);
   });
   if (cur.length) sentences.push(cur);
@@ -360,6 +371,32 @@ ${text}` },
  * Ersatz für Szenen, die sich nicht sauber schneiden lassen (oder die der Nutzer neu will).
  * weak = [{n (1-basiert), text, why}] → { scenes: [{n, scene}], cost }
  */
+/**
+ * Zweiter Durchgang: Das Modell hört sein Drehbuch so, wie es geschnitten klingt (nur die Zeilen,
+ * der Reihe nach, mit dem, was sich nicht sauber bauen ließ), liest es wie ein Zuschauer ohne
+ * Ablauf und schreibt es neu. heard = [{kind, text, mushy: [Wörter]}]
+ * → { scenes, outline, critique, cost }
+ */
+export async function reviseStory({ key, model = DEFAULT_MODEL, words, gold = [], messages, content, heard, fetchFn = fetch, onScene = null, onPhase }) {
+  const lines = heard.map((h, i) => `${i + 1}. [${h.kind}] "${h.text}"${h.mushy?.length ? `   – does not cut cleanly: ${h.mushy.join(', ')}` : ''}`).join('\n');
+  const msgs = [...messages, { role: 'assistant', content }, { role: 'user', content: `This is how the script sounds when it is cut, in order – the viewer only hears these lines and sees the matching footage:
+${lines}
+
+Now be the viewer. You do not know the outline. Answer honestly in "critique" (at most 60 words): Do you get the premise from these lines alone? Where does it turn into a plain list of documentary sentences? Which scenes are filler? Is the punchline a surprise?
+Then rewrite the whole script so that it really tells the outline and is funnier:
+- the twist must be heard, not only meant: edits have to change what a sentence means (a swapped object, a cut-off sentence that becomes rude, an added word), plain original sentences only where they set something up or become funny through what came before
+- drop filler; every scene either sets up or pays off a joke; a running gag comes back stronger
+- keep it easy to build (same rules as before), and replace every line that does not cut cleanly
+Reply as JSON: {"critique": "…", "outline": "…", "scenes": [{"kind": "…", "quote": "…", "text": "…", "gold": "…", "beat": "…"}]}` }];
+  const scenes = [];
+  const take = x => { const sc = normScene(x, words, gold); if (sc) { scenes.push(sc); onScene?.(sc, scenes.length - 1); } };
+  const r = await askOpenRouter({ key, model, messages: msgs, fetchFn, onItem: onScene ? take : null, onPhase });
+  let j = {};
+  try { j = JSON.parse(r.content.replace(/^```(?:json)?|```$/gm, '').trim()); } catch { j = {}; }
+  if (!onScene) for (const x of j.scenes ?? []) take(x);
+  return { scenes, outline: typeof j.outline === 'string' ? j.outline.slice(0, 800) : '', critique: typeof j.critique === 'string' ? j.critique.slice(0, 600) : '', content: r.content, cost: r.usage?.cost ?? 0 };
+}
+
 export async function fixScenes({ key, model = DEFAULT_MODEL, words, gold = [], messages, content, weak, fetchFn = fetch, onPhase }) {
   const list = weak.map(w => `Scene ${w.n}${w.text ? ` ("${w.text}")` : ''}: ${w.why}`).join('\n');
   const msgs = [...messages, { role: 'assistant', content }, { role: 'user', content: `Replace these scenes. Keep each scene's role in the story and its joke – do not fall back to the plain original. Make it easier to build: other words for the same joke (a near-miss word of one the speaker says, words exactly as in the transcript), or a tiny edit of a different passage with a fitting picture. If the editor wants another version, write a different joke for the same spot:
