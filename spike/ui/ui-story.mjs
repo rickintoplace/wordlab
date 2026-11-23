@@ -41,11 +41,10 @@ export default async ({ page, shot, log, sleep }) => {
     document.getElementById('ideas-key').value = 'sk-or-x';
     document.getElementById('ideas-key').dispatchEvent(new Event('change'));
     document.getElementById('ideas-btn').click();
+    document.querySelector('input[name="ai-route"][value="api"]').click();
   })()`);
   await sleep(300);
   await page.click('#story-go');
-  await sleep(300);
-  await ev(`[...document.querySelectorAll('#story button')].find(b => b.textContent.includes('Get ideas')).click()`);
   for (let i = 0; i < 30 && !(await ev(`document.querySelectorAll('.sc-story-pitch').length`)); i++) await sleep(200);
   log('Status:', await ev(`document.getElementById('story-status')?.textContent`), '· Anfragen:', await ev(`__asked.join()`), '· Fehler:', await ev(`JSON.stringify(__errs)`));
   log('Ideen:', await ev(`[...document.querySelectorAll('.sc-story-pitch b')].map(b => b.textContent).join(' | ')`), '· Feld sichtbar:', await ev(`!document.getElementById('story').hidden`));

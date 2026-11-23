@@ -532,6 +532,13 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .sc-story-outline { font-size: .86rem; color: var(--muted); max-width: 75ch; }
 .sc-story-outline summary { cursor: pointer; }
 .sc-story-outline p { margin: .3rem 0 0; line-height: 1.5; }
+.sc-route { display: grid; gap: .3rem; }
+.sc-route label { display: flex; align-items: baseline; gap: .45rem; padding: .4rem .55rem; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: .88rem; line-height: 1.35; }
+.sc-route label:has(input:checked) { border-color: var(--sc-accent); background: color-mix(in oklab, var(--sc-accent) 9%, transparent); }
+.sc-route input { accent-color: var(--sc-accent); margin: 0; padding: 0; }
+.sc-route small { display: block; color: var(--muted); font-size: .8rem; }
+.sc-chat-paste .sc-story-steps textarea { display: block; margin: .3rem 0; font: inherit; font-size: .86rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: .4rem .55rem; resize: vertical; width: 100%; box-sizing: border-box; }
+.sc-story > .sc-story-way { max-width: 46rem; }
 .sc-story-ways { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); align-items: start; }
 .sc-story-way { padding: .75rem .85rem .85rem; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); display: grid; gap: .55rem; }
 .sc-story-way h3 { margin: 0; font-size: .92rem; font-weight: 750; }

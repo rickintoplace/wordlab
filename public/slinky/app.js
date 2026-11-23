@@ -9,7 +9,8 @@ import { endOf, speedOf, srcSpan, timeOf, toggleCrossfades, migrate, keptSpan } 
 import { Player } from './player.js';
 import * as cache from './cache.js';
 import { pack, unpack, estimateMB } from './projfile.js';
-import { DEFAULT_MODEL, MODELS, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, streamPick, vocabulary, storyPitches, writeStory, fixScenes, storyMessages, rawScene, transcriptSentences, MAX_BUILD_COST, STORY_MODELS, chatStoryPrompt, chatFeedback, parseStoryReply } from './ideas.js';
+import { DEFAULT_MODEL, MODELS, generateIdeas, rewriteIdeas, findGold, keptWords, buildCost, streamPick, vocabulary, storyPitches, writeStory, fixScenes, storyMessages, rawScene, transcriptSentences, MAX_BUILD_COST, STORY_MODELS, chatStoryPrompt, chatFeedback, parseStoryReply, chatGoldPrompt, parseGoldReply, nearText } from './ideas.js';
+import { funnyWords } from './funny.js';
 
 paintIcons();
 // Logo in den Farben der bunten Ringe: Windung für Windung vom linken Fuß über den Bogen zum
@@ -1633,41 +1634,108 @@ async function clipsToList(cs) {
 
 // ---------------------------------------------------------------- Fundstücke
 const findsGo = $('finds-go');
-findsGo.addEventListener('click', () => S && findGoldUI(ideas.topic.value.trim()).catch(err => { aiFail(err); idleFinds(); }));
+// Beide Knöpfe (Find gold, Write a story) arbeiten über den gewählten Weg: eigener Chatbot
+// (Prompt kopieren, Antwort einfügen) oder OpenRouter (sofort, mit Schlüssel).
+findsGo.addEventListener('click', () => {
+  if (!S) return;
+  if (route() === 'chat') copyGoldPrompt().catch(err => { ideas.status.textContent = err.message; });
+  else findGoldUI(ideas.topic.value.trim()).catch(err => { aiFail(err); idleFinds(); });
+});
 const idleFinds = () => { findsGo.disabled = false; ideas.go.disabled = false; findsGo.classList.remove('busy'); ideas.status.classList.remove('sc-busy-text'); };
+/** Wörter des gewählten Sprechers und ihre Stellen im ganzen Transkript. */
+function speakerWords() {
+  const spk = speaker();
+  const pos = S.words.map((w, i) => i).filter(i => spk == null || S.words[i].spk === spk);
+  return { spk, pos, words: pos.map(i => S.words[i]) };
+}
+/** Beinahe-Wörter dieses Sprechers als Prompt-Text (einmal je Sprecher berechnet). */
+async function nearFor(words, spk) {
+  const cache = (S.nearCache ??= new Map()), k = `${S.words.length}|${spk}`;
+  if (!cache.has(k)) {
+    try { cache.set(k, nearText((await request({ type: 'near', words: vocabulary(words), targets: funnyWords(S.lang) })).near, words)); }
+    catch { return ''; }
+  }
+  return cache.get(k);
+}
+/**
+ * Fundstücke in die Gold-Liste: Bearbeitungen werden geschnitten, die `keep` besten, die sich
+ * sauber schneiden lassen, kommen in die Liste (in der Reihenfolge des Modells).
+ */
+function goldSink(spk, pos, keep) {
+  showBinTab('gold');
+  let at = 0, n = 0;
+  const pick = streamPick(keep, ({ f, idx, r }) => {
+    const note = `${f.why ? f.why + ' · ' : ''}Original: “${f.quote}”`;
+    if (r) { S.bin.splice(at++, 0, { id: newId(), text: f.edit, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force, rev: 0, ai: true, gold: true, note }); renderBin(); save(); }
+    else addPassage(idx, { note: f.why ? `${f.why} · as they say it` : '', gold: true }, at++);
+  });
+  const q = queue();
+  return {
+    offer: f => q.add(async () => {
+      n++;
+      const idx = f.idx.map(k => pos[k]);
+      if (!f.edit) { pick.offer({ f, idx, cost: 0 }); return; }
+      const r = await request({ type: 'mix', text: f.edit, speaker: spk, force: editForce(idx, f.edit) });
+      pick.offer({ f, idx, r, cost: buildCost(r.words) });
+      ideas.status.textContent = `${pick.count} finds in Gold so far – cutting more…`;
+    }),
+    done: async () => { await q.done(); return { got: pick.finish(), n }; },
+  };
+}
+const goldDone = got => `Added ${got} finds to Gold – originals are marked “Orig”, small edits “AI”. Hover one to see why.`;
 /** Das Sprachmodell sucht Stellen, die so oder mit kleinem Eingriff lustig sind; sie kommen in die Liste. */
 async function findGoldUI(topic = '') {
   const key = ideas.key.value.trim(), model = ideas.model.value.trim() || DEFAULT_MODEL;
   if (!key) { ideas.status.textContent = 'Please enter your OpenRouter key.'; $('ideas-keys').open = true; ideas.key.focus(); return; }
   store.set('slinky-openrouter-key', key); store.set('slinky-openrouter-model', model);
   findsGo.disabled = true; ideas.go.disabled = true; findsGo.classList.add('busy'); ideas.status.classList.add('sc-busy-text');
-  const spk = speaker();
-  const pos = S.words.map((w, i) => i).filter(i => spk == null || S.words[i].spk === spk);
-  showBinTab('gold');
-  let at = 0, n = 0;
-  const pick = streamPick(8, ({ f, idx, r }) => {
-    const note = `${f.why ? f.why + ' · ' : ''}Original: “${f.quote}”`;
-    if (r) { S.bin.splice(at++, 0, { id: newId(), text: f.edit, audio: r.audio, words: r.words, pieces: r.pieces, speaker: spk, force: r.force, rev: 0, ai: true, gold: true, note }); renderBin(); save(); }
-    else addPassage(idx, { note: f.why ? `${f.why} · as they say it` : '', gold: true }, at++);
-  });
-  const st = modelStatus(t => { ideas.status.textContent = t; }), q = queue();
+  const { spk, pos, words } = speakerWords();
+  const near = await nearFor(words, spk);
+  const sink = goldSink(spk, pos, 8);
+  const st = modelStatus(t => { ideas.status.textContent = t; });
+  let got;
   try {
-    await findGold({ key, model, words: pos.map(i => S.words[i]), lang: S.lang, topic, onPhase: st.phase,
-      onFind: f => q.add(async () => {
-        n++;
-        const idx = f.idx.map(k => pos[k]);
-        if (!f.edit) { pick.offer({ f, idx, cost: 0 }); return; }
-        const r = await request({ type: 'mix', text: f.edit, speaker: spk, force: editForce(idx, f.edit) });
-        pick.offer({ f, idx, r, cost: buildCost(r.words) });
-        ideas.status.textContent = `${pick.count} finds in Gold so far – cutting more…`;
-      }) });
+    await findGold({ key, model, words, lang: S.lang, topic, near, onPhase: st.phase, onFind: sink.offer });
     st.phase('writing');
-    await q.done();
+    ({ got } = await sink.done());
   } finally { st.stop(); }
-  const got = pick.finish();
-  if (!n) throw new Error('The model found nothing usable. Try again.');
-  ideas.status.textContent = `Added ${got} finds to Gold – originals are marked “Orig”, small edits “AI”. Hover one to see why.`;
+  if (!got) throw new Error('The model found nothing usable. Try again.');
+  ideas.status.textContent = goldDone(got);
   idleFinds();
+}
+/** Weg über den eigenen Chatbot: Prompt kopieren, Einfügefeld zeigen. */
+async function copyGoldPrompt() {
+  const { spk, words } = speakerWords();
+  ideas.status.textContent = 'Finding words this speaker can say…';
+  const text = chatGoldPrompt({ words, lang: S.lang, topic: ideas.topic.value.trim(), near: await nearFor(words, spk) });
+  $('gold-paste').hidden = false;
+  ideas.status.textContent = await copyText(text) ? `Prompt copied (${kChars(text)}). Paste it into a new chat and send it, then paste the whole answer below.` : 'Your browser did not allow copying. Try again.';
+}
+$('gold-copy').addEventListener('click', () => S && copyGoldPrompt().catch(err => { ideas.status.textContent = err.message; }));
+async function useGoldReply(text) {
+  if (!S || !text.trim() || findsGo.disabled) return;
+  const { spk, pos, words } = speakerWords();
+  const finds = parseGoldReply(text, words);
+  if (!finds) { ideas.status.textContent = 'No finds in this text. Paste the chatbot’s whole answer – it ends with a block of JSON.'; return; }
+  if (!finds.length) { ideas.status.textContent = 'None of the passages was found in the transcript. Ask the chatbot to copy them letter by letter.'; return; }
+  findsGo.disabled = true; findsGo.classList.add('busy'); ideas.status.classList.add('sc-busy-text');
+  try {
+    const sink = goldSink(spk, pos, finds.length);
+    for (const f of finds) sink.offer(f);
+    const { got } = await sink.done();
+    ideas.status.textContent = goldDone(got);
+    $('gold-reply').value = '';
+  } finally { idleFinds(); }
+}
+pasteWatch($('gold-reply'), 'finds', t => useGoldReply(t));
+$('gold-use').addEventListener('click', () => useGoldReply($('gold-reply').value));
+/** Eingefügte Antwort sofort benutzen, sobald sie vollständig aussieht (JSON mit `field` am Ende). */
+function pasteWatch(t, field, use) {
+  let timer;
+  t.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { if (t.value.includes(`"${field}"`) && /\}\s*(```\s*)?$/.test(t.value.trim())) use(t.value); }, 300);
+  });
 }
 
 /** Bearbeitung einer Stelle: Was aus dem Zitat bleibt, bleibt genau dieses Vorkommen (mit seinen Pausen). */
@@ -1690,14 +1758,14 @@ const storyGo = $('story-go');
 const KIND = { orig: ['Orig', 'As they say it in the video'], edit: ['Edit', 'A small edit of an original passage'], gold: ['Gold', 'From your Gold list'], new: ['New', 'A new line – the picture comes from the passage that fits'] };
 const LENGTHS = { short: 'short (~30 s)', medium: 'medium (~1 min)', long: 'long (~2 min)' };
 let storyBusy = false;
-// Gibt es schon eine Geschichte (Feld nur geschlossen), öffnet der Knopf sie wieder
-// Der Knopf öffnet nur das Feld: Dort wählt man den eigenen Chatbot (kostenlos im Abo) oder OpenRouter
+// Der Knopf legt gleich los: eigener Chatbot → Prompt kopieren und Einfügefeld zeigen; OpenRouter → Ideen holen
 storyGo.addEventListener('click', () => {
-  if (!S) return;
-  S.story = { length: 'medium', scenes: [], pitches: [], ...(S.story ?? {}), closed: false };
-  if (!S.story.wish) S.story.wish = ideas.topic.value.trim();
-  renderStory(); save();
+  if (!S || storyBusy) return;
+  S.story = { length: 'medium', scenes: [], pitches: [], ...(S.story ?? {}), closed: false, showIdeas: true };
+  renderStory();
   $('story').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  if (route() === 'chat') copyStoryPrompt().catch(storyFail);
+  else storyIdeasUI().catch(storyFail);
 });
 function storyFail(err) { aiFail(err); busyStory(false); }
 /** Fehler des Sprachmodells anzeigen; liegt es am Schlüssel, das Schlüsselfeld öffnen. */
@@ -1749,7 +1817,8 @@ async function storyIdeasUI() {
   $('story').scrollIntoView({ block: 'start', behavior: 'smooth' });
   const st = modelStatus(t => { storySay(t); });
   try {
-    await storyPitches({ ...ai, words, lang: S.lang, topic: (S.story.wish ?? '').trim(), gold, onPhase: st.phase,
+    const near = await nearFor(words, speaker());
+    await storyPitches({ ...ai, words, lang: S.lang, topic: ideas.topic.value.trim(), gold, near, onPhase: st.phase,
       onPitch: p => { S.story.pitches.push(p); renderStory(); } });
   } finally { st.stop(); }
   if (!S.story.pitches.length) throw new Error('The model sent no ideas. Try again.');
@@ -1816,7 +1885,7 @@ async function writeStoryUI(pitch) {
   busyStory(true);
   const st = modelStatus(t => { storySay(t); }), q = queue();
   try {
-    const res = await writeStory({ ...ai, words, lang: S.lang, pitch, gold, length: S.story.length, onPhase: st.phase,
+    const res = await writeStory({ ...ai, words, lang: S.lang, pitch, gold, length: S.story.length, near: await nearFor(words, speaker()), onPhase: st.phase,
       onScene: s => queueScene(q, s, pos, gold) });
     S.story.outline = res.outline;
     st.phase('writing');
@@ -1878,7 +1947,9 @@ async function copyText(t) {
 const kChars = t => `${Math.max(1, Math.round(t.length / 1000))}k characters`;
 async function copyStoryPrompt() {
   const { words, gold } = storyContext();
-  const text = chatStoryPrompt({ words, lang: S.lang, gold, wish: S.story.wish ?? '', length: S.story.length });
+  storySay('Finding words this speaker can say…');
+  const near = await nearFor(words, speaker());
+  const text = chatStoryPrompt({ words, lang: S.lang, gold, wish: ideas.topic.value.trim(), length: S.story.length, near });
   S.story.chat = true;
   save();
   storySay(await copyText(text) ? `Prompt copied (${kChars(text)}). Paste it into a new chat and send it, then paste the whole answer here.` : 'Your browser did not allow copying. Try again.');
@@ -1911,7 +1982,7 @@ async function copyStoryFeedback() {
   let fresh = null;
   if (!st.chat) {
     const { words, gold } = storyContext();
-    fresh = chatStoryPrompt({ words, lang: S.lang, gold, wish: st.wish || st.pitch?.premise || '', length: st.length });
+    fresh = chatStoryPrompt({ words, lang: S.lang, gold, wish: st.pitch?.premise || ideas.topic.value.trim(), length: st.length, near: await nearFor(words, speaker()) });
   }
   const ids = st.goldIds ?? [];
   const items = st.scenes.map(sc => [sc, S.bin.find(x => x.id === sc.id)]);
@@ -1961,33 +2032,31 @@ $('story').addEventListener('click', e => {
 /** Drehbuch-Feld unter der Zeitleiste: Wege zur Geschichte, Ideen, Szenen. */
 function renderStory() {
   const box = $('story'), st = S?.story;
-  box.hidden = !S || !st || st.closed;
-  if (box.hidden) return;
+  box.hidden = !S || !st || !!st.closed;
+  if (!S || !st || st.closed) return;
   const el = (tag, cls, html = '') => { const x = document.createElement(tag); if (cls) x.className = cls; x.innerHTML = html; return x; };
   const btn = (label, ic, fn, cls = 'sc-act') => { const x = document.createElement('button'); x.type = 'button'; x.className = cls; if (ic) x.append(icon(ic, { size: '14px' }), ' '); x.append(label); x.disabled = storyBusy; x.addEventListener('click', ev => { ev.stopPropagation(); fn(); }); return x; };
   const area = (id, ph, val, onInput, rows = 2) => { const t = document.createElement('textarea'); t.id = id; t.rows = rows; t.placeholder = ph; t.value = val ?? ''; t.spellcheck = false; t.addEventListener('input', () => onInput(t)); return t; };
   // Eingefügte Antwort sofort benutzen (unvollständige still übergehen), sonst über den Knopf
   const replyBox = () => {
     const wrap = el('div', 'sc-story-reply');
-    let timer;
-    const t = area('story-reply', 'Paste the chatbot’s whole answer here – the scenes are cut at once', '', x => {
-      clearTimeout(timer);
-      timer = setTimeout(() => { if (/"scenes"/.test(x.value) && /\}\s*(```\s*)?$/.test(x.value.trim())) useStoryReply(x.value).catch(storyFail); }, 300);
-    });
+    const t = area('story-reply', 'Paste the chatbot’s whole answer here – the scenes are cut at once', '', () => {});
+    pasteWatch(t, 'scenes', v => useStoryReply(v).catch(storyFail));
     t.disabled = storyBusy;
     wrap.append(t, btn('Use answer', 'check', () => useStoryReply(t.value).catch(storyFail)));
     return wrap;
   };
+  const chat = route() === 'chat';
   const scenes = st.scenes?.length > 0, start = !scenes || st.showIdeas;
   const out = [];
   // Kopf: Name, Aktionen, Länge, Schließen
   const bar = el('div', 'sc-story-bar');
-  bar.append(el('h2', '', esc(scenes ? st.pitch?.title || 'Your story' : 'Write a story')));
+  bar.append(el('h2', '', esc(scenes && !st.showIdeas ? st.pitch?.title || 'Your story' : 'Write a story')));
   if (scenes) {
     const place = btn('Place on the timeline', 'plus', placeStory, 'pill-button sc-pill');
     place.disabled = storyBusy || st.scenes.some(sc => sc.pending);
     place.title = 'All scenes in order behind the end of the timeline, with their picture; the export range is set to them';
-    bar.append(place, btn(st.showIdeas ? 'Hide' : 'New story', 'sparkles', () => { st.showIdeas = !st.showIdeas; renderStory(); }));
+    bar.append(place, btn(st.showIdeas ? 'Back to the script' : 'New story', st.showIdeas ? 'file-text' : 'sparkles', () => { st.showIdeas = !st.showIdeas; renderStory(); }));
   }
   if (start) {
     const lab = el('label', '', 'Length ');
@@ -1995,47 +2064,46 @@ function renderStory() {
     sel.id = 'story-length';
     sel.append(...Object.entries(LENGTHS).map(([v, t]) => Object.assign(document.createElement('option'), { value: v, textContent: t })));
     sel.value = st.length ?? 'medium';
-    sel.addEventListener('change', () => { S.story.length = sel.value; save(); });
+    sel.addEventListener('change', () => { S.story.length = sel.value; save(); if (chat) storySay('Length changed – copy the prompt again.'); });
     lab.append(sel);
     bar.append(lab);
+    if (!chat) {
+      const mlab = el('label', '', 'Model ');
+      const ms = document.createElement('select');
+      ms.id = 'story-model';
+      const known = STORY_MODELS.some(m => m.id === storyModel());
+      ms.append(...[...STORY_MODELS, ...(known ? [] : [{ id: storyModel(), label: storyModel() }])].map(m => Object.assign(document.createElement('option'), { value: m.id, textContent: m.label })));
+      ms.value = storyModel();
+      ms.addEventListener('change', () => store.set('slinky-story-model', ms.value));
+      mlab.append(ms);
+      bar.append(mlab, btn(st.pitches?.length ? 'New ideas' : 'Get ideas', 'sparkles', () => storyIdeasUI().catch(storyFail)));
+    }
   }
   const close = btn('', 'x', () => { S.story.closed = true; renderStory(); save(); }, 'sc-mini sc-x');
-  close.disabled = false; close.title = 'Close (Write a story opens it again)'; close.setAttribute('aria-label', 'Close');
+  close.disabled = false; close.title = 'Close'; close.setAttribute('aria-label', 'Close');
   bar.append(close);
   out.push(bar);
   const status = el('p', 'sc-note', esc(st.status ?? ''));
   status.id = 'story-status';
   if (storyBusy) status.classList.add('sc-busy-text');
   out.push(status);
-  if (scenes) {
+  if (scenes && !st.showIdeas) {
     out.push(el('p', 'sc-story-premise', refs(st.pitch?.premise ?? '')));
     if (st.outline) out.push(el('details', 'sc-story-outline', `<summary>Outline</summary><p>${refs(st.outline)}</p>`));
   }
-  if (start) {
-    // Zwei Wege: eigener Chatbot (Abo, starke Modelle, kostenlos) oder OpenRouter (Schlüssel, pro Aufruf)
-    const ways = el('div', 'sc-story-ways');
-    const chat = el('section', 'sc-story-way', '<h3>With your own chatbot</h3><p class="sc-note">Free with ChatGPT, Claude or Gemini. A model that thinks first (e.g. a “Thinking” or “Pro” mode) writes the best stories.</p>');
-    const wl = el('label', 'sc-story-wish', '<span>Your idea <small>(optional)</small></span>');
-    wl.append(area('story-wish', 'e.g. the narrator is in love with the chameleon', st.wish, t => { S.story.wish = t.value; save(); }));
+  if (start && chat) {
+    // Eigener Chatbot: Prompt (nochmal) kopieren, Antwort einfügen
+    const way = el('section', 'sc-story-way');
     const steps = el('ol', 'sc-story-steps');
-    const s1 = el('li'); s1.append(btn('Copy prompt', 'copy', () => copyStoryPrompt().catch(storyFail), 'pill-button sc-pill'));
+    const s1 = el('li'); s1.append(btn('Copy prompt again', 'copy', () => copyStoryPrompt().catch(storyFail)), el('span', 'sc-note', ` with the transcript${ideas.topic.value.trim() ? ` and your idea “${esc(ideas.topic.value.trim())}”` : ''}`));
     const s3 = el('li', '', 'Paste the whole answer here:'); s3.append(replyBox());
-    steps.append(s1, el('li', '', 'Paste it into a new chat and send it.'), s3);
-    chat.append(wl, steps);
-    const api = el('section', 'sc-story-way', '<h3>With OpenRouter</h3><p class="sc-note">With your OpenRouter key, paid per use: four ideas, then the script for the one you pick.</p>');
-    const mlab = el('label', '', 'Model ');
-    const ms = document.createElement('select');
-    ms.id = 'story-model';
-    const known = STORY_MODELS.some(m => m.id === storyModel());
-    ms.append(...[...STORY_MODELS, ...(known ? [] : [{ id: storyModel(), label: storyModel() }])].map(m => Object.assign(document.createElement('option'), { value: m.id, textContent: m.label })));
-    ms.value = storyModel();
-    ms.addEventListener('change', () => store.set('slinky-story-model', ms.value));
-    mlab.append(ms);
-    api.append(mlab, btn(st.pitches?.length ? 'New ideas' : 'Get ideas', 'sparkles', () => storyIdeasUI().catch(storyFail), 'pill-button sc-pill'));
-    ways.append(chat, api);
-    out.push(ways);
-    const own = (st.wish ?? '').trim();
-    const pitches = st.pitches?.length ? [...st.pitches, ...(own ? [{ title: 'Your idea', premise: own, why: 'from “Your idea”', own: true }] : [])] : [];
+    steps.append(s1, el('li', '', 'Paste it into a new chat and send it. A model that thinks first (a “Thinking” or “Pro” mode) writes the best stories.'), s3);
+    way.append(steps);
+    out.push(way);
+  }
+  if (start && !chat) {
+    const own = ideas.topic.value.trim();
+    const pitches = st.pitches?.length ? [...st.pitches, ...(own ? [{ title: 'Your idea', premise: own, why: 'from “What about?”', own: true }] : [])] : [];
     const grid = el('ol', 'sc-story-grid');
     for (const p of pitches) {
       const card = el('li', 'sc-story-pitch', `<p><b>${esc(p.title)}</b> ${refs(p.premise)}</p>${p.why ? `<p class="sc-note">${refs(p.why)}</p>` : ''}`);
@@ -2061,7 +2129,7 @@ function renderStory() {
     imp.append(nl, steps);
     improve = imp;
   }
-  if (st?.scenes?.length) {
+  if (scenes && !st.showIdeas) {
     const grid = el('ol', 'sc-story-grid');
     st.scenes.forEach((sc, i) => {
       const b = sc.id && S.bin.find(x => x.id === sc.id);
@@ -2369,6 +2437,20 @@ $('export-mark').checked = store.get('slinky-watermark') !== '0';
 $('export-mark').addEventListener('change', e => store.set('slinky-watermark', e.target.checked ? '1' : '0'));
 const ideas = { btn: $('ideas-btn'), box: $('ideas'), topic: $('ideas-topic'), key: $('ideas-key'), model: $('ideas-model'), go: $('ideas-go'), status: $('ideas-status'), list: $('ideas-models') };
 ideas.key.value = store.get('slinky-openrouter-key');
+// Weg: eigener Chatbot (Vorgabe ohne Schlüssel) oder OpenRouter
+const routeEls = [...document.querySelectorAll('input[name="ai-route"]')];
+function route() { return routeEls.find(r => r.checked)?.value ?? 'chat'; }
+function showRoute() {
+  const api = route() === 'api';
+  $('ideas-keys').hidden = !api; $('ideas-note-api').hidden = !api; $('ideas-note-chat').hidden = api;
+  if (api) $('gold-paste').hidden = true;
+  renderStory();
+}
+{
+  const v = store.get('slinky-ai-route') || (ideas.key.value.trim() ? 'api' : 'chat');
+  for (const r of routeEls) { r.checked = r.value === v; r.addEventListener('change', () => { store.set('slinky-ai-route', route()); showRoute(); }); }
+  showRoute();
+}
 // alte Voreinstellung durch die neue ersetzen, eine eigene Wahl bleibt
 // alte Voreinstellungen durch die neue ersetzen, eine eigene Wahl bleibt
 ideas.model.value = [store.get('slinky-openrouter-model')].find(m => m && !['google/gemini-2.5-flash-lite', 'deepseek/deepseek-v4.1-flash-1017'].includes(m)) ?? DEFAULT_MODEL;

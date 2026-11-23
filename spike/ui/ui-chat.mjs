@@ -1,19 +1,41 @@
-// Geschichte über den eigenen Chatbot: Feld öffnen, Prompt kopieren, Antwort einfügen, Rückmeldung kopieren.
-// Die Zwischenablage wird abgefangen (headless); die „Antwort“ ist fest und enthält Geplauder,
-// ein fast wörtliches Zitat (Endung falsch) und eines, das es nicht gibt.
+// Weg „Your chatbot“: Find gold und Write a story kopieren sofort einen Prompt, die eingefügte Antwort
+// wird geschnitten. Zwischenablage abgefangen (headless); Antworten fest, mit Geplauder, einem fast
+// wörtlichen und einem erfundenen Zitat.
 export default async ({ page, shot, log, sleep }) => {
   const ev = s => page.eval(s);
   await ev(`(() => { window.__errs = []; addEventListener('error', e => __errs.push(e.message)); addEventListener('unhandledrejection', e => __errs.push(String(e.reason)));
     window.__copied = []; navigator.clipboard.writeText = async t => { __copied.push(t); }; })()`);
-  await ev(`localStorage.removeItem('slinky-openrouter-key'); document.getElementById('ideas-key').value = ''; document.getElementById('ideas-btn').click()`);
+  await ev(`document.getElementById('ideas-btn').click(); document.querySelector('input[name="ai-route"][value="chat"]').click()`);
   await sleep(300);
+  log('Weg:', await ev(`document.querySelector('input[name="ai-route"]:checked').value`), '· Schlüsselfeld versteckt:', await ev(`document.getElementById('ideas-keys').hidden`));
+  await ev(`(() => { const t = document.getElementById('ideas-topic'); t.value = 'Die Forscher sind eigentlich hungrig'; })()`);
+  await shot('chat-aside');
+
+  // ---- Find gold
+  await page.click('#finds-go');
+  for (let i = 0; i < 20 && !(await ev(`__copied.length`)); i++) await sleep(200);
+  const gp = await ev(`__copied[0] ?? ''`);
+  log('Gold-Prompt:', gp.length, 'Zeichen · Einfügefeld:', await ev(`!document.getElementById('gold-paste').hidden`), '· Status:', await ev(`document.getElementById('ideas-status').textContent`));
+  log('Beinahe-Wörter im Prompt:\n' + (gp.match(/Near-miss words[\s\S]*?\n\n/)?.[0] ?? '(keine)').split('\n').slice(0, 12).join('\n'));
+  const q1 = await ev(`slinky.words.slice(20, 27).map(w => w.w).join(' ')`);
+  const goldReply = 'Hier meine Funde:\n```json\n' + JSON.stringify({ finds: [
+    { quote: q1, edit: '', why: 'klingt schräg' },
+    { quote: 'Das Besondere, diese Knochen gehören keinem Giganten.', edit: 'Das Besondere, diese Knochen gehören keinem Forscher.', why: 'Knochen' },
+    { quote: 'gibt es nicht', edit: '', why: 'x' }] }) + '\n```';
+  const goldBefore = await ev(`slinky.bin.filter(b => b.gold).length`);
+  await ev(`(() => { const t = document.getElementById('gold-reply'); t.value = ${JSON.stringify(goldReply)}; t.dispatchEvent(new Event('input')); })()`);
+  for (let i = 0; i < 40 && (await ev(`slinky.bin.filter(b => b.gold).length`)) < goldBefore + 2; i++) await sleep(250);
+  await sleep(300);
+  log('Gold dazu:', (await ev(`slinky.bin.filter(b => b.gold).length`)) - goldBefore, '· Status:', await ev(`document.getElementById('ideas-status').textContent`));
+
+  // ---- Write a story
   await page.click('#story-go');
-  await sleep(400);
-  log('Feld offen:', await ev(`!document.getElementById('story').hidden`), '· Wege:', await ev(`[...document.querySelectorAll('.sc-story-way h3')].map(h => h.textContent).join(' | ')`));
-  await ev(`(() => { const t = document.getElementById('story-wish'); t.value = 'Die Forscher sind eigentlich hungrig'; t.dispatchEvent(new Event('input')); })()`);
-  await ev(`[...document.querySelectorAll('#story button')].find(b => b.textContent.includes('Copy prompt')).click()`);
-  await sleep(300);
-  log('kopiert:', await ev(`__copied.length + ' Text(e), ' + (__copied[0]?.length ?? 0) + ' Zeichen; Wunsch drin: ' + __copied[0]?.includes('eigentlich hungrig') + '; Transkript drin: ' + /\\n1\\. /.test(__copied[0] ?? '')`), '· Status:', await ev(`document.getElementById('story-status').textContent`));
+  for (let i = 0; i < 20 && (await ev(`__copied.length`)) < 2; i++) await sleep(200);
+  const sp = await ev(`__copied[1] ?? ''`);
+  log('Story-Prompt:', sp.length, 'Zeichen; Wunsch drin:', sp.includes('eigentlich hungrig'), '· Tricks drin:', sp.includes('Collect jokes, not premises'), '· Beinahe-Wörter drin:', sp.includes('Near-miss words'), '· Gold drin:', /G1: /.test(sp));
+  log('Feld:', await ev(`document.querySelector('#story h2').textContent`), '· Status:', await ev(`document.getElementById('story-status').textContent`));
+  await ev(`document.getElementById('story').scrollIntoView()`);
+  await sleep(200);
   await shot('chat-start');
   const reply = `Gern! Ich habe mehrere Ideen durchgespielt …\n\n**Die hungrigen Forscher**\n\n\`\`\`json\n${JSON.stringify({ title: 'Die hungrigen Forscher', premise: 'Die Forscher wollen den Dino eigentlich essen.', outline: 'Erst Forschung, dann Hunger.', scenes: [
     { kind: 'orig', quote: 'Eine neue Generation von Forschenden hat mittlerweile jedoch entdeckt, dass dies nur die halbe Wahrheit ist.', text: '', gold: '', beat: 'Setup' },
@@ -25,24 +47,21 @@ export default async ({ page, shot, log, sleep }) => {
   for (let i = 0; i < 60 && (await ev(`!document.querySelector('.sc-story-improve') || [...document.querySelectorAll('.sc-story-scene')].some(x => x.classList.contains('pending'))`)); i++) await sleep(250);
   await sleep(400);
   log('Szenen:', await ev(`[...document.querySelectorAll('.sc-story-scene')].map(li => li.querySelector('.sc-story-top').textContent.trim().replace(/\\s+/g, ' ') + ' → ' + (li.querySelector('.sc-bin-line')?.textContent.trim() ?? '…')).join('\\n   ')`));
-  log('Status:', await ev(`document.getElementById('story-status').textContent`), '· Verbessern offen:', await ev(`document.querySelector('.sc-story-improve')?.open`), '· nicht gefunden:', await ev(`document.querySelector('.sc-story-improve .sc-note')?.textContent`));
-  log('Knopf je Szene ohne Schlüssel:', await ev(`document.querySelectorAll('.sc-story-acts .sc-mini').length + ' (nur Verschieben erwartet: 2 je Szene)'`));
+  log('Status:', await ev(`document.getElementById('story-status').textContent`), '· Verbessern offen:', await ev(`document.querySelector('.sc-story-improve')?.open`));
   await ev(`(() => { const t = document.getElementById('story-note'); t.value = 'Szene 3 ist zu brav'; t.dispatchEvent(new Event('input')); })()`);
   await ev(`[...document.querySelectorAll('#story button')].find(b => b.textContent.includes('Copy feedback')).click()`);
-  await sleep(300);
+  await sleep(400);
   const fb = await ev(`__copied.at(-1)`);
-  log('Rückmeldung:\n' + fb.split('```json')[0]);
-  log('enthält Fassung als JSON:', /```json\n\{"title"/.test(fb), '· ohne ganzen Auftrag (selber Chat):', !fb.includes('Transcript (numbered'));
+  log('Rückmeldung (Anfang):\n' + fb.split('```json')[0].split('\n').slice(0, 6).join('\n'));
   await ev(`document.getElementById('story').scrollIntoView()`);
   await sleep(300);
   await shot('chat-scenes');
-  // Neue Fassung über das Verbessern-Feld
-  const q2 = await ev(`slinky.words.slice(20, 26).map(w => w.w).join(' ')`);
-  const reply2 = '```json\n' + JSON.stringify({ title: 'Die hungrigen Forscher 2', premise: 'Neu.', outline: 'Neu.', scenes: [{ kind: 'orig', quote: q2, text: '', gold: '', beat: 'Neu' }] }) + '\n```';
-  await ev(`(() => { const t = document.getElementById('story-reply'); t.value = ${JSON.stringify(reply2)}; t.dispatchEvent(new Event('input')); })()`);
-  for (let i = 0; i < 40 && (await ev(`slinky.story.pitch?.title !== 'Die hungrigen Forscher 2' || slinky.story.scenes.some(s => s.pending)`)); i++) await sleep(250);
-  await sleep(300);
-  log('Status:', await ev(`document.getElementById('story-status').textContent`));
-  log('zweite Fassung:', await ev(`slinky.story.pitch.title + ': ' + slinky.story.scenes.length + ' Szene(n), Einträge mit story: ' + slinky.bin.filter(b => b.story).length`));
+  // „New story“ zeigt das Einfügefeld, „Back to the script“ wieder die Szenen
+  await ev(`[...document.querySelectorAll('#story button')].find(b => b.textContent.includes('New story')).click()`);
+  await sleep(200);
+  log('New story:', await ev(`!!document.getElementById('story-reply') && !document.querySelector('.sc-story-scene')`));
+  await ev(`[...document.querySelectorAll('#story button')].find(b => b.textContent.includes('Back to the script')).click()`);
+  await sleep(200);
+  log('zurück:', await ev(`document.querySelectorAll('.sc-story-scene').length`), 'Szenen');
   log('Fehler:', await ev(`JSON.stringify(__errs)`));
 };

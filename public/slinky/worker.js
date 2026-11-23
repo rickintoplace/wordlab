@@ -63,6 +63,7 @@ self.onmessage = async ({ data: m }) => {
     else if (m.type === 'rewrite') post(rewrite(m));
     else if (m.type === 'find') post({ type: 'found', id: m.id, query: m.query, results: find(m.query, m.speaker) });
     else if (m.type === 'pron') post({ type: 'pron', id: m.id, pron: pron(m.words) });
+    else if (m.type === 'near') post({ type: 'near', id: m.id, near: nearMiss(m.words, m.targets) });
   } catch (err) {
     post({ type: 'error', id: m.id, message: err?.message ?? String(err), stack: err?.stack });
   }
@@ -73,7 +74,8 @@ self.onmessage = async ({ data: m }) => {
 const ALIGN_VERSION = 9;   // 9: Ordnungszahlen („17.“), doppelte Whisper-Stellen, Ausweichfenster; 8: am Satzende vom nächsten Satz geborgte Laute; 7: Grenzen an Verschluss, Knall und Stimmeinsatz; 6: trennbare Vorsilben (an|ge|fasst); 3: Lexikon wählt die Standardform (wir → [viːɐ̯], nicht [mɐ]); 4: Zahlen werden ausgesprochen; 5: Längen aus dem Wörterbuch, Vokal-Vokal-Grenzen
 
 const MUSIC_CLEAN = 2;      // Fassung der Stimmrest-Filterung der Musik
-const lexicon = lang => fetch(`/data/slinky/lex-${lang}.txt?v=${ALIGN_VERSION}`).then(r => r.text()).then(parseLexicon);
+const LEX_REV = `${ALIGN_VERSION}.1`;   // .1: „Sex“ mit stimmlosem s (sonst klingt es wie „sechs“)
+const lexicon = lang => fetch(`/data/slinky/lex-${lang}.txt?v=${LEX_REV}`).then(r => r.text()).then(parseLexicon);
 
 /** Stimmreste aus der Musik; die Zischlaute der Stimme kennen wir aus dem Alignment. */
 function cleanVoiceFrom(music48, voice48, phones) {
@@ -512,6 +514,66 @@ function pron(words) {
     out[w] = toks.map(t => t.t + (t.stress === 1 ? 'ˈ' : '')).join('').replace(/(\S+?)ˈ/g, 'ˈ$1');
   }
   return out;
+}
+
+/**
+ * Beinahe-Wörter: lustige Zielwörter, die sich von einem gesagten Wort um etwa einen Laut
+ * unterscheiden (Himmel → Pimmel, konvex → Sex). Die kann das Werkzeug sauber bauen, und an der
+ * Stelle des echten Worts passen Satz, Melodie und Bild. Sprachmodelle finden solche Paare
+ * selbst kaum – die Laute sehen sie nicht. → [{ t, from: [{w, where}], d }] (d = 0: wird schon gesagt;
+ * where: 'start' | 'middle' | 'end', wenn das Zielwort in einem längeren Wort steckt)
+ */
+const MANNER = { p: 'stop', b: 'stop', t: 'stop', d: 'stop', k: 'stop', g: 'stop', ɡ: 'stop', ʔ: 'stop', f: 'fric', v: 'fric', s: 'fric', z: 'fric', ʃ: 'fric', ʒ: 'fric', ç: 'fric', x: 'fric', h: 'fric', θ: 'fric', ð: 'fric', m: 'nas', n: 'nas', ŋ: 'nas', l: 'liq', r: 'liq' };
+const manner = t => MANNER[t];
+function nearMiss(words, targets) {
+  const { lang, lex, src } = current;
+  const key = w => w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  const phones = w => { const k = src.lexicon.get(key(w)); return (k ? (k.toks ?? k) : pronounceSync(w, lang, lex).toks).map(t => canon(t.t).replace('ː', '')); };
+  const voc = [...new Set(words)].filter(w => !/\d/.test(w)).map(w => ({ w, k: key(w), p: phones(w) })).filter(v => v.k.length > 1);
+  const dist = (a, b, max) => {
+    if (Math.abs(a.length - b.length) > max) return 9;
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      for (let j = 1; j <= b.length; j++) {
+        const sub = a[i - 1] === b[j - 1] ? 0 : isVowel(a[i - 1]) && isVowel(b[j - 1]) ? 0.5 : manner(a[i - 1]) && manner(a[i - 1]) === manner(b[j - 1]) ? 0.7 : 1;
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + sub);
+      }
+      prev = cur;
+    }
+    return prev[b.length];
+  };
+  // Teil eines gesagten Worts (konvex → Sex, Marschall → Arsch): ein Stück, ein Schnitt weniger
+  const part = (p, v) => {
+    const max = p.length >= 5 ? 1 : p.length === 4 ? 0.7 : 0;
+    let best = 9, where = '';
+    for (let i = 0; i + p.length <= v.length; i++) {
+      if (i === 0 && p.length === v.length) continue;
+      const d = dist(p, v.slice(i, i + p.length), 1);
+      if (d < best) { best = d; where = i === 0 ? 'start' : i + p.length === v.length ? 'end' : 'middle'; }
+    }
+    return best <= max ? { d: best + 0.25, where } : null;
+  };
+  const out = [];
+  for (const t of targets) {
+    const k = key(t);
+    const said = voc.find(v => v.k === k);
+    if (said) { out.push({ t, from: [{ w: said.w, where: '' }], d: 0 }); continue; }
+    const p = phones(t), max = p.length >= 5 ? 1.5 : 1;
+    // Nicht nur Beugung desselben Worts (Pimmel ← Pimmels), sondern ein anderes Wort
+    const hits = [];
+    for (const v of voc) {
+      if (v.k.startsWith(k) || k.startsWith(v.k)) continue;
+      const d = dist(p, v.p, max);
+      if (d > 0 && d <= max) { hits.push({ w: v.w, d }); continue; }
+      const x = p.length >= 3 && v.p.length > p.length ? part(p, v.p) : null;
+      if (x) hits.push({ w: v.w, d: x.d, where: x.where });
+    }
+    hits.sort((a, b) => a.d - b.d);
+    const seen = new Set(), from = hits.filter(h => !seen.has(h.w) && seen.add(h.w)).slice(0, 3);
+    if (from.length) out.push({ t, from: from.map(h => ({ w: h.w, where: h.where ?? '' })), d: from[0].d });
+  }
+  return out.sort((a, b) => a.d - b.d);
 }
 
 /** Unterschied zweier gleich langer Schreibungen als „p → f“ (nur ein zusammenhängendes Stück). */

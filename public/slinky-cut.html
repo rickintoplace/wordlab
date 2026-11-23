@@ -156,6 +156,10 @@
                 <button type="button" class="sc-link" id="ideas-btn" aria-expanded="false" title="Let a language model look for funny passages"><span data-icon="sparkles" data-icon-size="14px"></span> Find gold</button>
               </div>
               <div class="sc-ideas" id="ideas" hidden>
+                <div class="sc-route" role="radiogroup" aria-label="Which AI writes">
+                  <label><input type="radio" name="ai-route" value="chat"> <span><b>Your chatbot</b> <small>ChatGPT, Claude or Gemini · copy and paste · free with your plan</small></span></label>
+                  <label><input type="radio" name="ai-route" value="api"> <span><b>OpenRouter</b> <small>automatic · your key · paid per use</small></span></label>
+                </div>
                 <input id="ideas-topic" type="text" aria-label="What about? (optional)" placeholder="What about? (optional) e.g. a breakup, the weather">
                 <details class="sc-ideas-keys" id="ideas-keys">
                   <summary>OpenRouter key and model <span id="ideas-keyinfo"></span></summary>
@@ -168,11 +172,21 @@
                 </details>
                 <div class="sc-row">
                   <button type="button" class="pill-button sc-pill" id="ideas-go" hidden><span data-icon="sparkles" data-icon-size="14px"></span> Get ideas</button>
-                  <button type="button" class="pill-button sc-pill" id="finds-go" title="Let the model look through everything they say for passages that are funny as they are, or with a tiny edit"><span data-icon="zoom" data-icon-size="14px"></span> Find gold</button>
-                  <button type="button" class="pill-button sc-pill" id="story-go" title="Plan a short story that can be built from this video – with your own chatbot (ChatGPT, Claude, Gemini) or with OpenRouter"><span data-icon="sparkles" data-icon-size="14px"></span> Write a story</button>
+                  <button type="button" class="pill-button sc-pill" id="finds-go" title="Passages that are funny as they are, or with a tiny edit – they go to Gold"><span data-icon="zoom" data-icon-size="14px"></span> Find gold</button>
+                  <button type="button" class="pill-button sc-pill" id="story-go" title="A short story that can be built from this video – the script appears below the timeline"><span data-icon="sparkles" data-icon-size="14px"></span> Write a story</button>
                   <span class="sc-note" id="ideas-status"></span>
                 </div>
-                <p class="sc-note">Finds funny passages, or plans a short story from them. Only the transcript goes to OpenRouter; your key stays here (<span title="openrouter.ai/keys">get one at openrouter.ai</span>).</p>
+                <div class="sc-chat-paste" id="gold-paste" hidden>
+                  <ol class="sc-story-steps">
+                    <li><button type="button" class="sc-act" id="gold-copy"><span data-icon="copy" data-icon-size="14px"></span> Copy prompt again</button></li>
+                    <li>Paste it into a new chat and send it.</li>
+                    <li>Paste the whole answer here:
+                      <textarea id="gold-reply" rows="3" spellcheck="false" placeholder="Paste the chatbot’s whole answer here – the finds go to Gold at once"></textarea>
+                      <button type="button" class="sc-act" id="gold-use"><span data-icon="check" data-icon-size="14px"></span> Use answer</button></li>
+                  </ol>
+                </div>
+                <p class="sc-note" id="ideas-note-api">Finds funny passages, or plans a short story from them. Only the transcript goes to OpenRouter; your key stays here (<span title="openrouter.ai/keys">get one at openrouter.ai</span>).</p>
+                <p class="sc-note" id="ideas-note-chat" hidden>Finds funny passages, or plans a short story from them: the buttons copy a prompt with the transcript for your chatbot, and you paste its answer back. A model that thinks first (a “Thinking” or “Pro” mode) works best.</p>
               </div>
               <div class="sc-bintabs" id="bintabs" role="tablist" hidden>
                 <button type="button" role="tab" data-tab="cut" aria-selected="true">Sentences <span></span></button>

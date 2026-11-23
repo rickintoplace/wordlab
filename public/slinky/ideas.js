@@ -239,28 +239,36 @@ function nearQuote(ks, q) {
  * Fundstücke holen: Stellen, die schon lustig sind oder mit kleinem Eingriff werden.
  * `words` = [{w, s, e, spk}] (ein Sprecher oder alle). → { finds: [{quote, edit, why, idx}], cost }
  */
-export async function findGold({ key, model = DEFAULT_MODEL, words, lang, topic = '', count = 12, fetchFn = fetch, onFind = null, onPhase }) {
+const goldAsk = ({ words, lang, topic, count, near }) => {
   const { text } = transcriptSentences(words);
   const language = lang === 'de' ? 'German' : 'English';
+  return `Language: ${language}.${topic ? `\nTheme or target of the jokes: ${topic}` : ''}
+Find ${count} passages. Reply as JSON: {"finds": [{"quote": "…", "edit": "…", "why": "…"}]}
+${near ? `\n${near}` : ''}
+Transcript:
+${text}`;
+};
+/** Fundstück des Modells → geprüft (Zitat gefunden) oder null. */
+function normFind(f, words) {
+  if (!f || typeof f.quote !== 'string') return null;
+  const idx = locateQuote(words, f.quote);
+  if (!idx) return null;
+  const quote = idx.map(i => words[i].w).join(' ');
+  const edit = typeof f.edit === 'string' && f.edit.trim() && f.edit.trim() !== f.quote.trim() ? f.edit.trim() : '';
+  return { quote, edit, why: String(f.why ?? '').slice(0, 80), idx };
+}
+
+export async function findGold({ key, model = DEFAULT_MODEL, words, lang, topic = '', count = 12, near = '', fetchFn = fetch, onFind = null, onPhase }) {
   const messages = [
     { role: 'system', content: FINDS },
-    { role: 'user', content: `Language: ${language}.${topic ? `\nTheme or target of the jokes: ${topic}` : ''}
-Find ${count} passages. Reply as JSON: {"finds": [{"quote": "…", "edit": "…", "why": "…"}]}
-
-Transcript:
-${text}` },
+    { role: 'user', content: goldAsk({ words, lang, topic, count, near }) },
   ];
   const finds = [];
   let asked = 0;
   const take = f => {
     asked++;
-    if (!f || typeof f.quote !== 'string') return;
-    const idx = locateQuote(words, f.quote);
-    if (!idx) return;
-    const quote = idx.map(i => words[i].w).join(' ');
-    const edit = typeof f.edit === 'string' && f.edit.trim() && f.edit.trim() !== f.quote.trim() ? f.edit.trim() : '';
-    if (finds.some(x => x.quote === quote && x.edit === edit)) return;
-    const x = { quote, edit, why: String(f.why ?? '').slice(0, 80), idx };
+    const x = normFind(f, words);
+    if (!x || finds.some(y => y.quote === x.quote && y.edit === x.edit)) return;
     finds.push(x);
     onFind?.(x);
   };
@@ -308,7 +316,7 @@ const goldText = gold => (gold?.length ? `\nGold clips the editor likes (use by 
 export const STORY_LENGTHS = { short: [5, 7], medium: [8, 12], long: [13, 18] };
 
 /** Ideen für eine Geschichte. → { pitches: [{title, premise, why}], cost } */
-export async function storyPitches({ key, model = DEFAULT_MODEL, words, lang, topic = '', gold = [], count = 4, fetchFn = fetch, onPitch = null, onPhase }) {
+export async function storyPitches({ key, model = DEFAULT_MODEL, words, lang, topic = '', gold = [], count = 4, near = '', fetchFn = fetch, onPitch = null, onPhase }) {
   const { text } = transcriptSentences(words);
   const language = lang === 'de' ? 'German' : 'English';
   const messages = [
@@ -319,7 +327,7 @@ Suggest ${count} different story ideas for a YTP of about one minute. Each needs
 - "premise": one or two sentences: what happens, the running gag and the punchline
 - "why": at most 20 words: which passages it uses (name sentences as #12 or #12–15, gold clips as G2), what is seen there and how the story reinterprets it
 Reply as JSON: {"pitches": [{"title": "…", "premise": "…", "why": "…"}]}
-${goldText(gold)}
+${near ? `\n${near}` : ''}${goldText(gold)}
 Transcript:
 ${text}` },
   ];
@@ -354,8 +362,8 @@ export function normScene(x, words, gold = []) {
  * Drehbuch zu einer Idee. Szenen kommen gestreamt (onScene) und schon geprüft.
  * → { scenes, messages, content, cost }  (messages/content für Nachbesserungen)
  */
-export async function writeStory({ key, model = DEFAULT_MODEL, words, lang, pitch, gold = [], length = 'medium', fetchFn = fetch, onScene = null, onPhase }) {
-  const messages = storyMessages({ words, lang, pitch, gold, length });
+export async function writeStory({ key, model = DEFAULT_MODEL, words, lang, pitch, gold = [], length = 'medium', near = '', fetchFn = fetch, onScene = null, onPhase }) {
+  const messages = storyMessages({ words, lang, pitch, gold, length, near });
   const scenes = [];
   const take = x => { const s = normScene(x, words, gold); if (s) { scenes.push(s); onScene?.(s, scenes.length - 1); } };
   const r = await askOpenRouter({ key, model, messages, fetchFn, onItem: onScene ? take : null, onPhase });
@@ -370,7 +378,7 @@ export async function writeStory({ key, model = DEFAULT_MODEL, words, lang, pitc
 export const rawScene = (s, gold = []) => ({ kind: s.kind, quote: s.quote ?? '', text: s.text ?? '', gold: s.kind === 'gold' ? String((s.gold ?? 0) + 1) : '', beat: s.beat ?? '' });
 
 /** Die Anfrage für ein Drehbuch (auch, um später einzelne Szenen nachzubessern). */
-export function storyMessages({ words, lang, pitch, gold = [], length = 'medium' }) {
+export function storyMessages({ words, lang, pitch, gold = [], length = 'medium', near = '' }) {
   const { text } = transcriptSentences(words);
   const language = lang === 'de' ? 'German' : 'English';
   const [a, b] = STORY_LENGTHS[length] ?? STORY_LENGTHS.medium;
@@ -387,7 +395,7 @@ Each scene:
 - "gold": gold: its number (e.g. 2); otherwise ""
 - "beat": at most 6 words: what the scene does in the story (setup, running gag, escalation, punchline …)
 Reply as JSON: {"outline": "…", "scenes": [{"kind": "…", "quote": "…", "text": "…", "gold": "…", "beat": "…"}]}
-${goldText(gold)}
+${near ? `\n${near}` : ''}${goldText(gold)}
 Transcript:
 ${text}` },
   ];
@@ -436,6 +444,25 @@ Reply as JSON: {"scenes": [{"replace": <scene number>, "kind": "…", "quote": "
   return { scenes: out, cost: r.usage?.cost ?? 0 };
 }
 
+/**
+ * Beinahe-Wörter (worker.js nearMiss) als Rohstoff für den Prompt, mit den Sätzen, in denen das
+ * echte Wort steht – dort lässt es sich austauschen, ohne dass sich Satz und Bild ändern.
+ */
+export function nearText(near, words, max = 70) {
+  if (!near?.length) return '';
+  const { sentences } = transcriptSentences(words);
+  const key = w => w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  const where = new Map();
+  sentences.forEach((s, n) => { for (const i of s) { const k = key(words[i].w); (where.get(k) ?? where.set(k, []).get(k)).push(n + 1); } });
+  const refs = w => [...new Set(where.get(key(w)) ?? [])].slice(0, 3).map(n => `#${n}`).join(', ');
+  const said = near.filter(x => x.d === 0), swap = near.filter(x => x.d > 0).slice(0, max);
+  const src = f => `${f.where ? `${f.where} of ` : ''}"${f.w}" (${refs(f.w)})`;
+  return `${swap.length ? `Near-miss words: the speaker can say these cleanly, because each differs from a word they really say by about one sound (or hides inside it). Swap the funny word in where the real word stands – sentence, melody and picture stay the same, only the meaning flips. This is the strongest material you have; the tool checked every one:
+${swap.map(x => `- ${x.t} ← ${x.from.map(src).join(' or ')}`).join('\n')}
+` : ''}${said.length ? `Funny or rude words the speaker already says: ${said.map(x => `${x.t} (${refs(x.from[0].w)})`).join(', ')}
+` : ''}`;
+}
+
 // ---------------------------------------------------------------- Eigener Chatbot
 // Starke Modelle (ChatGPT, Claude, Gemini mit Nachdenken) über das Abo des Nutzers: Prompt kopieren,
 // dort einfügen, Antwort zurück einfügen. Der Prompt muss deshalb alles enthalten und das Modell
@@ -451,34 +478,91 @@ const ANSWER_FORMAT = `End your answer with the complete script as one JSON code
 {"title": "…", "premise": "…", "outline": "…", "scenes": [{"kind": "…", "quote": "…", "text": "…", "gold": "…", "beat": "…"}]}
 \`\`\``;
 
-/** Ganzer Auftrag für den eigenen Chatbot: Idee finden, Drehbuch schreiben, selbst prüfen. */
-export function chatStoryPrompt({ words, lang, gold = [], wish = '', length = 'medium' }) {
+// Für starke Modelle: erst Witze sammeln, dann die Geschichte drumherum. Wer mit der Prämisse
+// anfängt, presst jeden Satz in ein Thema und landet bei einem einzigen Gag (Nov. 2026: zwölfmal
+// „Pimmel“). Dazu das Handwerk mit Beispielen und das, was nur das Werkzeug weiß: Beinahe-Wörter.
+const CRAFT = `You write YouTube Poop (YTP) sentence mixes: real footage re-cut word by word so that a serious narrator seems to say things they never said. The audience are teenagers and young adults who have seen a thousand YTPs. Harmless, polite or merely odd is a fail. What they love: crude and rude jokes in a calm documentary voice, absurd escalation, surprise, and the feeling that the narrator has lost his mind.
+
+The tricks (from a cooking show and a nature documentary – not your material). A good script uses many of them, not one over and over:
+1. Near-miss word: swap a word for a ruder one that differs by about one sound. "Wir geben die Butter in die Pfanne" → "Wir geben die Butter in die Hose". The best trick, because the tool builds it cleanly – but a script where every scene is the same swap is lame.
+2. Cut-off: stop a sentence early so the rest is left to dirty minds, or stop it right after a word that changes its meaning. "Der Bär reibt sich am Stamm, bis …" / "Now we beat the eggs" (cut before "until fluffy").
+3. Splice: the start of one sentence glued to the end of another. "Die Löwin pirscht sich an" + "… an die Frau des Tierfilmers."
+4. Role swap: who does what to whom. "The zebra hunts the lion." "Das Gemüse schneidet den Koch."
+5. Context turns harmless: an ORIGINAL sentence, unchanged, becomes innuendo or an insult because of the line before it. Setup "Der Koch ist heute allein zu Haus." – then the original "Jetzt wird es richtig heiß." This is how original passages earn their place.
+6. The narrator breaks: he confesses something, insults the viewer or the animal, talks about his own life. "Ich habe seit drei Wochen nicht geduscht." "You will never be as fast as this cheetah, Kevin."
+7. Anticlimax: a long, serious, complicated build-up, then something tiny and stupid. "Nach Millionen Jahren der Evolution entwickelte sich ein einzigartiges Organ: der Po."
+8. Number or degree gone wrong: "bis zu 2 Meter" → "bis zu 200 Meter"; "nicht ungewöhnlich" → "ungewöhnlich geil".
+9. Everyday and anachronism: petty modern life in an epic setting. "Die Mammutherde zieht zum Finanzamt." "Galilei richtet sein Fernrohr auf Tinder."
+10. Escalating repetition: the same frame comes back three times, worse each time. The third one is the joke.
+11. Callback: the last scene brings back a word or image from the start, now with a twist.
+
+Every scene must be a joke on its own or set one up. Variety rule: use at least five different tricks; no swapped-in word appears in more than three scenes; one running gag may return, but it must change and escalate each time.
+
+What the tool can do: words the speaker really says (in exactly that form) are cut out whole and sound perfect. Other words are stitched from syllables and sounds of the speaker; that works for near-miss words (listed below, checked by the tool) and short words whose syllables the speaker says, and turns to mush otherwise. So: at most one or two words per line that the speaker does not say – the near-miss words are the safe ones.
+The picture cannot be changed, only cut, reordered and reinterpreted: the narration usually describes what is on screen, so build jokes on passages whose picture helps them. Never require things that are not in the video.
+The transcript was made by speech recognition and has spelling mistakes; in the video the words sound normal, so a misspelling is never a joke.
+Keep it obvious parody. No slurs against groups of people, nothing sexual involving children.`;
+
+/** Ganzer Auftrag für den eigenen Chatbot: Witze sammeln, Geschichte finden, Drehbuch schreiben, selbst prüfen. */
+export function chatStoryPrompt({ words, lang, gold = [], wish = '', length = 'medium', near = '' }) {
   const { text } = transcriptSentences(words);
   const language = lang === 'de' ? 'German' : 'English';
   const [a, b] = STORY_LENGTHS[length] ?? STORY_LENGTHS.medium;
-  return `${STORY}
+  return `${CRAFT}
 
 # Your task
 The editor uses the sentence-mixing tool Slinky-Cut. They will paste your answer into the tool, which cuts every scene from the video by itself. Do not ask questions back: deliver the script.
 
 Language of the video: ${language}. Write title, premise, outline, beats and all spoken lines in ${language}.
-${wish ? `The editor's idea or wish: ${wish}` : 'The editor has no wish: find the funniest premise yourself.'}
-Length: ${a} to ${b} scenes in order. About a third are original passages as setup and context; most of the rest are tiny edits; few new lines.
+${wish ? `The editor's idea or wish: ${wish}` : 'The editor has no wish: the funniest story wins.'}
+Length: ${a} to ${b} scenes in order (scenes can be short: two to fifteen words each).
 
-Work in these steps and take your time:
-1. Read the whole transcript. Note its sequences: which subject, place or event each one covers, and what is probably seen there (the narration describes the picture).
-2. Brainstorm at least six premises that twist what the footage really shows. For each, ask: can it be told mostly with original passages and tiny edits? Does the joke come across in the spoken lines alone, not only in your plan? Pick the funniest one that is easy to build.
-3. Write the outline: three to five sentences telling the whole story in order.
-4. Write the scenes so that they tell exactly this outline. Every scene sets up or pays off a joke; the running gag comes back stronger; the last scene surprises.
-5. Check like the tool: every "quote" must be consecutive words of ONE numbered sentence, copied letter by letter (same spelling and endings; punctuation does not matter). Words in "text" that do not occur in the transcript in exactly this form get stitched from single sounds and may turn to mush: at most one such word per line, and only if its syllables occur in the transcript.
-6. Check like a viewer who only hears the lines in order and sees the matching footage, without knowing the outline: is the premise clear by the second or third scene? Does any scene stay a plain documentary sentence that does nothing for the story? Is the punchline a surprise? Fix what fails and check again.
+Work in these steps and take your time – think long and hard before you answer:
+1. Read the whole transcript. Note its sequences (subject, place, event) and what is probably seen in each.
+2. Collect jokes, not premises. Go through the transcript sentence by sentence and write down every line that could get a laugh – at least 30, using all eleven tricks and the near-miss words below.
+3. Judge harshly, like a bored teenager: score each line from 1 to 10. Drop everything below 7. Be honest: most lines are below 7.
+4. Only now find the story: which premise ties as many of the best lines as possible together, so that each one gets funnier because of the one before? The premise is a twist on what the footage really shows (the narrator's secret obsession, a hidden relationship, a crime, a scandal, an absurd mission …). Fill the gaps with original passages that set up the next joke (trick 5), never with plain documentary filler.
+5. Write the outline (three to five sentences), then the scenes. The first two scenes make the premise clear; then escalate; the last scene is the biggest surprise.
+6. Check like the tool: every "quote" is consecutive words of ONE numbered sentence, copied letter by letter (same spelling and endings; punctuation does not matter). At most one or two words per line that the speaker does not say.
+7. Check like the audience: read only the spoken lines in order. Would someone send this to a friend? Which scenes are filler or the same joke again? Replace them and check again.
 
 ${SCENE_FIELDS}
 
 You may think out loud first. ${ANSWER_FORMAT}
-${goldText(gold)}
+${near ? `\n# Raw material from the tool\n${near}` : ''}${goldText(gold)}
 Transcript (numbered sentences):
 ${text}`;
+}
+
+/** Fundstücke über den eigenen Chatbot: derselbe Auftrag wie findGold, mit Handwerk und Antwortformat. */
+export function chatGoldPrompt({ words, lang, topic = '', count = 15, near = '' }) {
+  return `${FINDS}
+
+The editor will paste your answer into the sentence-mixing tool Slinky-Cut, which cuts every find by itself. Do not ask questions back. Take your time: collect at least 40 candidates first, judge them harshly like a bored teenager would (most are below 7 out of 10), and keep only the best. Use the near-miss words below where they fit – the tool builds them cleanly.
+You may think out loud first. End your answer with one JSON code block (nothing after it).
+
+${goldAsk({ words, lang, topic, count, near })}`;
+}
+/** Antwort des Chatbots mit Fundstücken → [{quote, edit, why, idx}] oder null (kein JSON gefunden). */
+export function parseGoldReply(reply, words) {
+  const j = lastJson(reply, x => Array.isArray(x?.finds));
+  if (!j) return null;
+  const out = [];
+  for (const f of j.finds) { const x = normFind(f, words); if (x && !out.some(y => y.quote === x.quote && y.edit === x.edit)) out.push(x); }
+  return out;
+}
+/** Letzter JSON-Block einer Chat-Antwort, der `ok` erfüllt (Codeblöcke zuerst, sonst erstes { bis letztes }). */
+function lastJson(reply, ok) {
+  const s = String(reply);
+  const blocks = [...s.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].map(m => m[1]);
+  const i = s.indexOf('{'), j = s.lastIndexOf('}');
+  if (i >= 0 && j > i) blocks.push(s.slice(i, j + 1));
+  for (const b of blocks.reverse()) {
+    for (const t of [b.trim(), b.trim().replace(/,\s*([}\]])/g, '$1')]) {
+      try { const x = JSON.parse(t); if (ok(x)) return x; } catch { /* nächster Versuch */ }
+    }
+  }
+  return null;
 }
 
 /**
@@ -496,7 +580,7 @@ The editor's current script (with their own changes, if any):
 ${JSON.stringify(script)}
 \`\`\`
 
-Improve it. Replace every line that does not cut cleanly (same joke, words the speaker really says, or a near-miss of one), fix what the editor asks for, and go through steps 5 and 6 again. Keep what works. ${ANSWER_FORMAT}`;
+Improve it. Replace every line that does not cut cleanly (same joke, words the speaker really says, or a near-miss word from the list), fix what the editor asks for, and go through steps 6 and 7 again. If the script is still mostly one kind of joke, rebuild it with other tricks. Keep what works. ${ANSWER_FORMAT}`;
   return fresh ? `${fresh}\n\n# A first draft\n${body}` : body;
 }
 
@@ -505,16 +589,7 @@ Improve it. Replace every line that does not cut cleanly (same joke, words the s
  * Nimmt den letzten JSON-Block mit Szenen; verzeiht Zitate, die fast wörtlich sind.
  */
 export function parseStoryReply(reply, words, gold = []) {
-  const blocks = [...String(reply).matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].map(m => m[1]);
-  const s = String(reply), i = s.indexOf('{'), j = s.lastIndexOf('}');
-  if (i >= 0 && j > i) blocks.push(s.slice(i, j + 1));
-  let j0 = null;
-  for (const b of blocks.reverse()) {
-    for (const t of [b.trim(), b.trim().replace(/,\s*([}\]])/g, '$1')]) {
-      try { const x = JSON.parse(t); if (Array.isArray(x?.scenes)) { j0 = x; break; } } catch { /* nächster Versuch */ }
-    }
-    if (j0) break;
-  }
+  const j0 = lastJson(reply, x => Array.isArray(x?.scenes));
   if (!j0) return null;
   const scenes = [], lost = [];
   j0.scenes.forEach((x, k) => {
