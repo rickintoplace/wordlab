@@ -17,11 +17,12 @@ export const DEFAULT_MODEL = MODELS[0].id;
  * Für Geschichten: Im Vergleich (Nov. 2026, Tier-Doku) erzählte Claude Sonnet 5.5 eine echte
  * Geschichte mit hörbarem Witz („Innerhalb einer Zehntel Sekunde ist die Zunge fertig“), Gemini
  * 3.8 Flash reihte Doku-Sätze aneinander, deren Witz nur in der Beschreibung stand – auch nach
- * einer Selbstkritik-Runde. Kostet ~15 ct pro Geschichte (Ideen, Drehbuch, Nachbesserung).
+ * einer Selbstkritik-Runde. Kostet aber ~15 ct pro Geschichte – zu viel als Vorgabe. Der bessere
+ * Weg für starke Modelle ist der eigene Chatbot (chatStoryPrompt): Abo statt Kosten pro Aufruf.
  */
 export const STORY_MODELS = [
-  { id: 'anthropic/claude-sonnet-5.5', label: 'Claude Sonnet 5.5 · best · ~15 ct per story' },
-  { id: 'google/gemini-3.8-flash', label: 'Gemini 3.8 Flash · ~5 ct · flatter stories' },
+  { id: 'google/gemini-3.8-flash', label: 'Gemini 3.8 Flash · ~5 ct per story' },
+  { id: 'anthropic/claude-sonnet-5.5', label: 'Claude Sonnet 5.5 · better · ~15 ct per story' },
 ];
 
 const SYSTEM = `You write YouTube Poop (YTP) sentence mixes. Sentence mixing re-cuts real footage word by word so the speaker seems to say things they never said. The joke is always the contrast with how they normally sound: the more serious the speaker, the dumber the line.
@@ -206,7 +207,32 @@ export function locateQuote(words, quote) {
     while (k < q.length && ks[i + k] === q[k]) k++;
     if (k === q.length) return Array.from({ length: q.length }, (_, j) => i + j);
   }
-  return null;
+  return q.length >= 3 ? nearQuote(ks, q) : null;
+}
+
+/**
+ * Fast wörtliches Zitat (Chatbots ändern gern eine Endung oder lassen ein Wort aus): die Stelle,
+ * an der mindestens 80 % der Wörter in Reihenfolge stehen. → [Wortindex…] oder null
+ */
+function nearQuote(ks, q) {
+  const need = Math.ceil(q.length * 0.8), starts = new Set(q.slice(0, 3));
+  let best = null;
+  for (let i = 0; i < ks.length; i++) {
+    if (!starts.has(ks[i])) continue;
+    const win = ks.slice(i, i + q.length + 2);
+    // längste gemeinsame Teilfolge, dazu die erste und letzte getroffene Stelle im Fenster
+    const L = Array.from({ length: q.length + 1 }, () => new Int16Array(win.length + 1));
+    for (let a = q.length - 1; a >= 0; a--) for (let b = win.length - 1; b >= 0; b--)
+      L[a][b] = q[a] === win[b] ? L[a + 1][b + 1] + 1 : Math.max(L[a + 1][b], L[a][b + 1]);
+    const n = L[0][0];
+    if (n < need || (best && n <= best.n)) continue;
+    let first = -1, last = -1;
+    for (let a = 0, b = 0; a < q.length && b < win.length;) {
+      if (q[a] === win[b]) { if (first < 0) first = b; last = b; a++; b++; } else if (L[a + 1][b] >= L[a][b + 1]) a++; else b++;
+    }
+    best = { n, s: i + first, e: i + last };
+  }
+  return best && Array.from({ length: best.e - best.s + 1 }, (_, j) => best.s + j);
 }
 
 /**
@@ -408,6 +434,100 @@ Reply as JSON: {"scenes": [{"replace": <scene number>, "kind": "…", "quote": "
   const out = [];
   for (const x of raw) { const n = parseInt(x?.replace, 10), s = normScene(x, words, gold); if (n && s) out.push({ n, scene: s }); }
   return { scenes: out, cost: r.usage?.cost ?? 0 };
+}
+
+// ---------------------------------------------------------------- Eigener Chatbot
+// Starke Modelle (ChatGPT, Claude, Gemini mit Nachdenken) über das Abo des Nutzers: Prompt kopieren,
+// dort einfügen, Antwort zurück einfügen. Der Prompt muss deshalb alles enthalten und das Modell
+// selbst prüfen lassen, was sonst der Ablauf hier prüft (Zitate wörtlich, baubar, als Zuschauer).
+const SCENE_FIELDS = `Scene fields:
+- "kind": "orig" | "edit" | "gold" | "new"
+- "quote": orig: the passage exactly as it stands in the transcript (consecutive words of one numbered sentence, 3 to 25 words, letter by letter); edit: the passage being edited (same rules); new: a passage whose picture fits this line (same rules); gold: ""
+- "text": edit and new: what the speaker should say; orig and gold: ""
+- "gold": gold: its number (e.g. 2); otherwise ""
+- "beat": at most 6 words: what the scene does in the story (setup, running gag, escalation, punchline …)`;
+const ANSWER_FORMAT = `End your answer with the complete script as one JSON code block in exactly this format (no comments in it, nothing after it):
+\`\`\`json
+{"title": "…", "premise": "…", "outline": "…", "scenes": [{"kind": "…", "quote": "…", "text": "…", "gold": "…", "beat": "…"}]}
+\`\`\``;
+
+/** Ganzer Auftrag für den eigenen Chatbot: Idee finden, Drehbuch schreiben, selbst prüfen. */
+export function chatStoryPrompt({ words, lang, gold = [], wish = '', length = 'medium' }) {
+  const { text } = transcriptSentences(words);
+  const language = lang === 'de' ? 'German' : 'English';
+  const [a, b] = STORY_LENGTHS[length] ?? STORY_LENGTHS.medium;
+  return `${STORY}
+
+# Your task
+The editor uses the sentence-mixing tool Slinky-Cut. They will paste your answer into the tool, which cuts every scene from the video by itself. Do not ask questions back: deliver the script.
+
+Language of the video: ${language}. Write title, premise, outline, beats and all spoken lines in ${language}.
+${wish ? `The editor's idea or wish: ${wish}` : 'The editor has no wish: find the funniest premise yourself.'}
+Length: ${a} to ${b} scenes in order. About a third are original passages as setup and context; most of the rest are tiny edits; few new lines.
+
+Work in these steps and take your time:
+1. Read the whole transcript. Note its sequences: which subject, place or event each one covers, and what is probably seen there (the narration describes the picture).
+2. Brainstorm at least six premises that twist what the footage really shows. For each, ask: can it be told mostly with original passages and tiny edits? Does the joke come across in the spoken lines alone, not only in your plan? Pick the funniest one that is easy to build.
+3. Write the outline: three to five sentences telling the whole story in order.
+4. Write the scenes so that they tell exactly this outline. Every scene sets up or pays off a joke; the running gag comes back stronger; the last scene surprises.
+5. Check like the tool: every "quote" must be consecutive words of ONE numbered sentence, copied letter by letter (same spelling and endings; punctuation does not matter). Words in "text" that do not occur in the transcript in exactly this form get stitched from single sounds and may turn to mush: at most one such word per line, and only if its syllables occur in the transcript.
+6. Check like a viewer who only hears the lines in order and sees the matching footage, without knowing the outline: is the premise clear by the second or third scene? Does any scene stay a plain documentary sentence that does nothing for the story? Is the punchline a surprise? Fix what fails and check again.
+
+${SCENE_FIELDS}
+
+You may think out loud first. ${ANSWER_FORMAT}
+${goldText(gold)}
+Transcript (numbered sentences):
+${text}`;
+}
+
+/**
+ * Rückmeldung für denselben Chat: wie das Drehbuch geschnitten klingt, was sich nicht schneiden
+ * ließ, der Wunsch des Nutzers und seine aktuelle Fassung. heard = [{kind, text, mushy}],
+ * lost = [{n, why, scene}]. Ohne Chat-Verlauf (Entwurf kam über OpenRouter) mit ganzem Auftrag davor.
+ */
+export function chatFeedback({ heard, lost = [], note = '', script, fresh = null }) {
+  const lines = heard.map((h, i) => `${i + 1}. [${h.kind}] "${h.text}"${h.mushy?.length ? `   – does not cut cleanly: ${h.mushy.join(', ')} would be stitched from single sounds` : ''}`).join('\n');
+  const body = `I cut ${fresh ? 'this' : 'your'} script in Slinky-Cut. This is how it sounds, in order – the viewer only hears these lines and sees the matching footage:
+${lines}
+${lost.length ? `\nThe tool could not use these scenes of the script:\n${lost.map(l => `- "${l.scene}": ${l.why}`).join('\n')}\n` : ''}${note ? `\nThe editor's note: ${note}\n` : ''}
+The editor's current script (with their own changes, if any):
+\`\`\`json
+${JSON.stringify(script)}
+\`\`\`
+
+Improve it. Replace every line that does not cut cleanly (same joke, words the speaker really says, or a near-miss of one), fix what the editor asks for, and go through steps 5 and 6 again. Keep what works. ${ANSWER_FORMAT}`;
+  return fresh ? `${fresh}\n\n# A first draft\n${body}` : body;
+}
+
+/**
+ * Antwort des Chatbots → { title, premise, outline, scenes (geprüft), lost: [{n, scene, why}] } oder null.
+ * Nimmt den letzten JSON-Block mit Szenen; verzeiht Zitate, die fast wörtlich sind.
+ */
+export function parseStoryReply(reply, words, gold = []) {
+  const blocks = [...String(reply).matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].map(m => m[1]);
+  const s = String(reply), i = s.indexOf('{'), j = s.lastIndexOf('}');
+  if (i >= 0 && j > i) blocks.push(s.slice(i, j + 1));
+  let j0 = null;
+  for (const b of blocks.reverse()) {
+    for (const t of [b.trim(), b.trim().replace(/,\s*([}\]])/g, '$1')]) {
+      try { const x = JSON.parse(t); if (Array.isArray(x?.scenes)) { j0 = x; break; } } catch { /* nächster Versuch */ }
+    }
+    if (j0) break;
+  }
+  if (!j0) return null;
+  const scenes = [], lost = [];
+  j0.scenes.forEach((x, k) => {
+    const sc = normScene(x, words, gold);
+    if (sc) { scenes.push(sc); return; }
+    const why = !['orig', 'edit', 'gold', 'new'].includes(x?.kind) ? 'unknown kind'
+      : x.kind === 'gold' ? `there is no gold clip ${x.gold}`
+        : x.kind === 'orig' ? 'this quote is not in the transcript (it must be consecutive words of one sentence, letter by letter)'
+          : 'no text to say';
+    lost.push({ n: k + 1, scene: String(x?.text || x?.quote || '').slice(0, 200), why });
+  });
+  const str = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+  return { title: str(j0.title, 80), premise: str(j0.premise, 400), outline: str(j0.outline, 800), scenes, lost };
 }
 
 /**

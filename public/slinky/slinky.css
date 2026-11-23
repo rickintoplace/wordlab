@@ -532,6 +532,23 @@ body.sc-editing .sc-fair, body.sc-editing .sc-device { display: none; }
 .sc-story-outline { font-size: .86rem; color: var(--muted); max-width: 75ch; }
 .sc-story-outline summary { cursor: pointer; }
 .sc-story-outline p { margin: .3rem 0 0; line-height: 1.5; }
+.sc-story-ways { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); align-items: start; }
+.sc-story-way { padding: .75rem .85rem .85rem; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); display: grid; gap: .55rem; }
+.sc-story-way h3 { margin: 0; font-size: .92rem; font-weight: 750; }
+.sc-story-way > .sc-note { margin: 0; }
+.sc-story-way > label:not(.sc-story-wish) { font-size: .85rem; color: var(--muted); }
+.sc-story-way .sc-pill { justify-self: start; }
+.sc-story-wish { display: grid; gap: .25rem; font-size: .85rem; color: var(--muted); }
+.sc-story-way textarea, .sc-story-improve textarea { font: inherit; font-size: .88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: .4rem .55rem; resize: vertical; width: 100%; box-sizing: border-box; }
+.sc-story-steps { margin: 0; padding-left: 1.3rem; display: grid; gap: .45rem; font-size: .88rem; }
+.sc-story-steps li::marker { color: var(--muted); font-weight: 700; }
+.sc-story-reply { display: grid; gap: .35rem; margin-top: .3rem; }
+.sc-story-reply .sc-act { justify-self: start; }
+.sc-story-improve { padding: .6rem .8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); display: grid; gap: .55rem; max-width: 60rem; }
+.sc-story-improve[open] { padding-bottom: .8rem; }
+.sc-story-improve summary { cursor: pointer; font-weight: 700; font-size: .9rem; }
+.sc-story-improve > * + * { margin-top: .5rem; }
+.sc-story-improve .sc-note { margin: 0; }
 .sc-story-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); }
 .sc-story-pitch { padding: .65rem .75rem; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); display: grid; gap: .45rem; align-content: start; }
 .sc-story-pitch p { margin: 0; font-size: .88rem; line-height: 1.45; }

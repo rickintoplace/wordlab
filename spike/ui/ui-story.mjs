@@ -44,7 +44,10 @@ export default async ({ page, shot, log, sleep }) => {
   })()`);
   await sleep(300);
   await page.click('#story-go');
+  await sleep(300);
+  await ev(`[...document.querySelectorAll('#story button')].find(b => b.textContent.includes('Get ideas')).click()`);
   for (let i = 0; i < 30 && !(await ev(`document.querySelectorAll('.sc-story-pitch').length`)); i++) await sleep(200);
+  log('Status:', await ev(`document.getElementById('story-status')?.textContent`), '· Anfragen:', await ev(`__asked.join()`), '· Fehler:', await ev(`JSON.stringify(__errs)`));
   log('Ideen:', await ev(`[...document.querySelectorAll('.sc-story-pitch b')].map(b => b.textContent).join(' | ')`), '· Feld sichtbar:', await ev(`!document.getElementById('story').hidden`));
   await shot('story-ideas');
   log('Verweise:', await ev(`[...document.querySelectorAll('.sc-story-pitch .sc-ref')].map(b => b.textContent).join(' ')`));
